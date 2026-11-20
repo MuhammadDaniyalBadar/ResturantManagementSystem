@@ -1,49 +1,60 @@
 {% extends "base.html" %}
-{% block title %}Staff - {{ restaurant.name }}{% endblock %}
+{% block title %}Staff · {{ restaurant.name }}{% endblock %}
 {% block body %}
-<header class="top">
-  <h1>{{ restaurant.name }} · Staff</h1>
-  <nav>
-    {% if role == "owner" %}<a href="{% url 'kitchen' %}">Kitchen</a><a href="{% url 'qr' %}">QR codes</a><a href="/admin/">Menu &amp; tables</a>{% endif %}
-    <form method="post" action="{% url 'logout' %}" style="margin:0">{% csrf_token %}<button class="ghost small">Log out</button></form>
-  </nav>
+<header class="hero">
+  <div class="topbar" style="position: relative; z-index: 1">
+    <div class="logo">{{ restaurant.initials }}</div>
+    <div><h1 class="d">{{ restaurant.name }}</h1><div class="muted sm" style="margin-top: 3px">Service desk</div></div>
+    <nav>
+      {% if role == "owner" %}<a class="chip" href="{% url 'kitchen' %}">Kitchen</a><a class="chip" href="{% url 'qr' %}">QR codes</a><a class="chip" href="/admin/">Menu and tables</a>{% endif %}
+    </nav>
+    <span class="grow"></span>
+    <span class="row" style="gap: 8px; font-weight: 700; font-size: 13px"><span class="livedot"></span>Live</span>
+    <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
+  </div>
 </header>
-<main class="wide"><div class="board" id="board"></div></main>
+<main class="page" style="padding-top: 24px"><div class="board" id="board"></div></main>
 {% endblock %}
 {% block script %}
 <script>
 const $ = (s) => document.querySelector(s);
+let first = true;
 
-function orderCard(o) {
-  return h('div', { class: 'card ticket' },
-    h('div', { class: 'head' }, h('span', { class: 'big' }, 'Table ' + o.table), h('span', { class: 'muted' }, '#' + o.id + ' · ' + ago(o.seconds_old))),
-    h('ul', {}, o.items.map((i) => h('li', {}, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : ''),
-      i.note ? h('div', { class: 'note' }, 'Note: ' + i.note) : null))),
-    o.status === 'cooking' && o.seconds_left !== null ? h('div', { class: 'muted' }, 'About ', countdown(o.seconds_left), ' left') : null,
-    o.action ? h('button', { class: 'ok', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/orders/' + o.id + '/advance/', {}), refresh); } }, o.action) : null);
+const lines = (o) => h('ul', {}, o.items.map((i) => h('li', {}, plate(i.art, i.name, 40, 'flat'),
+  h('span', { class: 'grow' }, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : ''),
+    i.note ? h('span', { class: 'tag al', style: 'display:block;margin-top:3px;width:fit-content' }, 'Note: ' + i.note) : null),
+  h('span', { class: 'muted sm' }, i.station))));
+
+function orderCard(o, n) {
+  const cls = o.status === 'placed' ? ' new' : '';
+  return h('div', { class: 'ticket' + cls, style: first ? `animation-delay:${n * 60}ms` : 'animation:none' },
+    h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + o.table), h('span', { class: 'muted sm' }, '#' + o.id + ' · ' + ago(o.seconds_old))),
+    lines(o),
+    o.status === 'cooking' && o.seconds_left !== null ? h('div', { class: 'muted sm' }, 'About ', h('b', { class: 'timer', style: 'color:var(--fg)' }, countdown(o.seconds_left)), ' left') : null,
+    o.action ? h('button', { class: 'btn', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/orders/' + o.id + '/advance/', {}), refresh); } }, o.action) : null);
 }
-
-function requestCard(r) {
-  return h('div', { class: 'card ticket' },
-    h('div', { class: 'head' }, h('span', { class: 'big' }, 'Table ' + r.table), h('span', { class: 'muted' }, ago(r.seconds_old))),
-    h('div', {}, h('strong', {}, r.label), ' · ' + r.status_label),
-    h('div', { class: 'add' },
-      r.status === 'open' ? h('button', { class: 'small', onclick: () => act(() => api('/staff/requests/' + r.id + '/ack/', {}), refresh) }, 'On my way') : null,
-      h('button', { class: 'small ok', onclick: () => act(() => api('/staff/requests/' + r.id + '/done/', {}), refresh) }, 'Done')));
+function requestCard(r, n) {
+  return h('div', { class: 'ticket req', style: first ? `animation-delay:${n * 60}ms` : 'animation:none' },
+    h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + r.table), h('span', { class: 'muted sm' }, ago(r.seconds_old))),
+    h('div', { class: 'row' }, h('span', { class: 'bb' }, r.label), h('span', { class: 'st ' + (r.status === 'open' ? 'help' : 'eating') }, r.status_label)),
+    h('div', { class: 'row' },
+      r.status === 'open' ? h('button', { class: 'btn ghost sm', onclick: () => act(() => api('/staff/requests/' + r.id + '/ack/', {}), refresh) }, 'On my way') : null,
+      h('span', { class: 'grow' }), h('button', { class: 'btn sm', onclick: () => act(() => api('/staff/requests/' + r.id + '/done/', {}), refresh) }, 'Done')));
 }
-
 function column(title, cards, emptyText) {
-  return h('div', { class: 'col' }, h('h2', {}, title + ' (' + cards.length + ')'), cards.length ? cards : h('div', { class: 'empty' }, emptyText));
+  return h('div', { class: 'col3' }, h('div', { class: 'spread' }, h('h2', { class: 'd', style: 'font-size:22px;font-weight:700' }, title), h('span', { class: 'pill' }, cards.length)),
+    cards.length ? cards : h('div', { class: 'empty' }, emptyText));
 }
 
 async function refresh() {
   const d = await api('/staff/data/');
   const by = (s) => d.orders.filter((o) => o.status === s).map(orderCard);
   $('#board').replaceChildren(
-    column('Service requests', d.requests.map(requestCard), 'No one is asking for anything.'),
+    column('Requests', d.requests.map(requestCard), 'No one is asking for anything.'),
     column('New orders', by('placed'), 'No new orders.'),
     column('In the kitchen', by('cooking'), 'Nothing cooking.'),
     column('Ready to serve', by('ready'), 'Nothing waiting.'));
+  first = false;
 }
 
 live('/ws/staff/', refresh);

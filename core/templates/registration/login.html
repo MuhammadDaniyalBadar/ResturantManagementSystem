@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 {% block title %}Staff login{% endblock %}
 {% block body %}
-<main>
-  <form method="post" class="login card">
+<main class="login">
+  <form method="post" class="card rise" style="padding: 28px; gap: 16px; box-shadow: var(--shadow-m)">
     {% csrf_token %}
-    <h1>Staff login</h1>
-    {% if form.errors %}<p class="muted" style="color:var(--bad)">Wrong username or password.</p>{% endif %}
-    <label>Username<input name="username" autocomplete="username" autofocus required></label>
-    <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+    <div class="logo">SG</div>
+    <h1 class="d" style="font-size: 34px; font-weight: 700; line-height: 1">Staff <span class="gold">login</span></h1>
+    {% if form.errors %}<p style="color: #ff8a7e; font-weight: 600">Wrong username or password.</p>{% endif %}
+    <label class="f">Username<input name="username" autocomplete="username" autofocus required></label>
+    <label class="f">Password<input name="password" type="password" autocomplete="current-password" required></label>
     <input type="hidden" name="next" value="{{ next }}">
-    <button type="submit">Log in</button>
+    <button type="submit" class="btn wide">Log in</button>
   </form>
 </main>
 {% endblock %}

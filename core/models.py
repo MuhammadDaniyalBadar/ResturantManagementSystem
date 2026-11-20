@@ -13,6 +13,10 @@ class Restaurant(models.Model):
     name = models.CharField(max_length=120)
     currency = models.CharField(max_length=8, default="Rs")
 
+    @property
+    def initials(self):
+        return "".join(w[0] for w in self.name.split())[:2].upper() or "R"
+
     def __str__(self):
         return self.name
 
@@ -57,6 +61,10 @@ class Category(models.Model):
 
 class Dish(models.Model):
     SPICE = [("", "-"), ("mild", "Mild"), ("medium", "Medium"), ("hot", "Hot")]
+    ART = [
+        ("", "None"), ("seekh", "Seekh kebab"), ("tikka", "Tikka"), ("makhani", "Curry bowl (red)"), ("dal", "Dal bowl (yellow)"),
+        ("biryani", "Biryani"), ("naan", "Naan"), ("garlic", "Garlic naan"), ("lassi", "Lassi"), ("chai", "Tea"), ("limesoda", "Lime soda"),
+    ]
 
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE)
     category = models.ForeignKey(Category, on_delete=models.CASCADE)
@@ -70,6 +78,8 @@ class Dish(models.Model):
     station = models.CharField(max_length=40, default="Kitchen", help_text="Kitchen column, e.g. Tandoor, Curry, Drinks")
     prep_minutes = models.PositiveIntegerField(default=15)
     available = models.BooleanField(default=True)
+    art = models.CharField(max_length=12, blank=True, choices=ART, help_text="Illustration shown on the menu")
+    featured = models.BooleanField(default=False, help_text="Shown as the Chef's pick on the menu")
 
     class Meta:
         ordering = ["category__position", "name"]

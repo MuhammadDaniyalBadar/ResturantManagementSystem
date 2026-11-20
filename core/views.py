@@ -72,8 +72,8 @@ def seconds_since(moment, now):
 def order_json(order, now):
     items = list(order.items.all())
     left = None
+    estimate = max((i.dish.prep_minutes for i in items), default=0) * 60
     if order.status == Order.COOKING and order.cooking_at:
-        estimate = max((i.dish.prep_minutes for i in items), default=0) * 60
         left = max(0, estimate - seconds_since(order.cooking_at, now))
     return {
         "id": order.id,
@@ -81,10 +81,11 @@ def order_json(order, now):
         "status": order.status,
         "label": order.get_status_display(),
         "seconds_left": left,
+        "estimate": estimate,
         "seconds_old": seconds_since(order.created_at, now),
         "total": str(order.total),
         "items": [
-            {"name": i.dish.name, "size": i.size_label, "qty": i.quantity, "note": i.note, "station": i.dish.station, "ready": bool(i.ready_at)}
+            {"name": i.dish.name, "size": i.size_label, "qty": i.quantity, "note": i.note, "station": i.dish.station, "ready": bool(i.ready_at), "art": i.dish.art, "prep": i.dish.prep_minutes}
             for i in items
         ],
     }
@@ -134,6 +135,8 @@ def menu_data(restaurant):
                 "allergens": [a.strip() for a in d.allergens.split(",") if a.strip()],
                 "spice": d.get_spice_display() if d.spice else "",
                 "sizes": [{"id": s.id, "label": s.label, "price": str(s.price)} for s in d.sizes.all()],
+                "art": d.art,
+                "featured": d.featured,
             }
             for d in category.dish_set.all()
             if d.available
@@ -232,7 +235,8 @@ def kitchen_data(request):
             lines = [i for i in data["items"] if i["station"] == station]
             if all(i["ready"] for i in lines):
                 continue
-            ticket = {"order_id": o.id, "table": o.table.number, "elapsed": seconds_since(o.cooking_at, now), "items": lines}
+            target = max(i["prep"] for i in lines) * 60  # over this and the ticket turns red
+            ticket = {"order_id": o.id, "table": o.table.number, "elapsed": seconds_since(o.cooking_at, now), "target": target, "items": lines}
             stations.setdefault(station, []).append(ticket)
     return JsonResponse({"stations": [{"name": n, "tickets": t} for n, t in sorted(stations.items())]})
 
@@ -251,7 +255,7 @@ def kitchen_ready(request, pk):
 @staff_only(OWNER)
 def qr_sheet(request):
     tables = [
-        {"number": t.number, "url": url, "svg": segno.make(url, error="m").svg_inline(scale=5, border=1)}
+        {"number": t.number, "url": url, "svg": segno.make(url, error="m").svg_inline(scale=5, border=2, light="#ffffff", dark="#120d0b")}
         for t in Table.objects.filter(restaurant=request.profile.restaurant)
         for url in [request.build_absolute_uri(reverse("table", args=[t.code]))]
     ]

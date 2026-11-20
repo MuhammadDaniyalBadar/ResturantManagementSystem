@@ -6,18 +6,18 @@ from django.db import transaction
 
 from core.models import Category, Dish, DishSize, Restaurant, StaffProfile, Table
 
-# (category, name, description, price, spice, allergens, station, prep minutes, [(size, price)])
+# (category, name, description, price, spice, allergens, station, prep minutes, [(size, price)], art)
 MENU = [
-    ("Starters", "Seekh Kebab", "Minced lamb skewers from the clay oven", 450, "medium", "", "Tandoor", 15, []),
-    ("Starters", "Paneer Tikka", "Marinated cottage cheese, charred", 380, "mild", "Dairy", "Tandoor", 14, []),
-    ("Mains", "Paneer Makhani", "Paneer in a rich tomato and butter gravy", 520, "medium", "Dairy, Nuts", "Curry", 18, [("Half", 520), ("Full", 880)]),
-    ("Mains", "Dal Tadka", "Yellow lentils with a garlic tempering", 340, "mild", "Dairy", "Curry", 12, [("Half", 340), ("Full", 600)]),
-    ("Mains", "Veg Biryani", "Fragrant rice layered with vegetables", 420, "medium", "Dairy", "Curry", 20, []),
-    ("Breads", "Butter Naan", "Soft naan brushed with butter", 80, "", "Dairy, Gluten", "Tandoor", 8, []),
-    ("Breads", "Garlic Naan", "Naan with garlic and coriander", 100, "", "Dairy, Gluten", "Tandoor", 8, []),
-    ("Drinks", "Mango Lassi", "Chilled yoghurt and mango", 180, "", "Dairy", "Drinks", 4, []),
-    ("Drinks", "Masala Chai", "Spiced milk tea", 90, "", "Dairy", "Drinks", 5, []),
-    ("Drinks", "Fresh Lime Soda", "Sweet or salted", 120, "", "", "Drinks", 3, []),
+    ("Starters", "Seekh Kebab", "Minced lamb skewers from the clay oven", 450, "medium", "", "Tandoor", 15, [], "seekh"),
+    ("Starters", "Paneer Tikka", "Marinated cottage cheese, charred", 380, "mild", "Dairy", "Tandoor", 14, [], "tikka"),
+    ("Mains", "Paneer Makhani", "Paneer in a rich tomato and butter gravy", 520, "medium", "Dairy, Nuts", "Curry", 18, [("Half", 520), ("Full", 880)], "makhani"),
+    ("Mains", "Dal Tadka", "Yellow lentils with a garlic tempering", 340, "mild", "Dairy", "Curry", 12, [("Half", 340), ("Full", 600)], "dal"),
+    ("Mains", "Veg Biryani", "Fragrant rice layered with vegetables", 420, "hot", "Dairy", "Curry", 20, [], "biryani"),
+    ("Breads", "Butter Naan", "Soft naan brushed with butter", 80, "", "Dairy, Gluten", "Tandoor", 8, [], "naan"),
+    ("Breads", "Garlic Naan", "Naan with garlic and coriander", 100, "", "Dairy, Gluten", "Tandoor", 8, [], "garlic"),
+    ("Drinks", "Mango Lassi", "Chilled yoghurt and mango", 180, "", "Dairy", "Drinks", 4, [], "lassi"),
+    ("Drinks", "Masala Chai", "Spiced milk tea", 90, "", "Dairy", "Drinks", 5, [], "chai"),
+    ("Drinks", "Fresh Lime Soda", "Sweet or salted", 120, "", "", "Drinks", 3, [], "limesoda"),
 ]
 
 
@@ -36,12 +36,12 @@ class Command(BaseCommand):
         restaurant = Restaurant.objects.create(name="Demo Kitchen", currency="Rs")
 
         categories = {}
-        for position, (cat, name, desc, price, spice, allergens, station, prep, sizes) in enumerate(MENU):
+        for cat, name, desc, price, spice, allergens, station, prep, sizes, art in MENU:
             if cat not in categories:
                 categories[cat] = Category.objects.create(restaurant=restaurant, name=cat, position=len(categories))
             dish = Dish.objects.create(
                 restaurant=restaurant, category=categories[cat], name=name, description=desc, price=price,
-                spice=spice, allergens=allergens, station=station, prep_minutes=prep,
+                spice=spice, allergens=allergens, station=station, prep_minutes=prep, art=art, featured=(art == "makhani"),
             )
             for label, size_price in sizes:
                 DishSize.objects.create(dish=dish, label=label, price=size_price)

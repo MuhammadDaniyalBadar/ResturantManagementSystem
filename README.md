@@ -24,6 +24,10 @@ Open http://127.0.0.1:8000 . Logins (password `demo1234`, or `$DEMO_PASSWORD`):
 
 Guests need no login. Each table's link is printed by `seed_demo` and shown, with a QR code, at `/staff/qr/`.
 
+## Look and feel
+
+The whole app uses one dark, warm design ("Midnight Spice"): Fraunces headings, Plus Jakarta Sans text, saffron and chili accents, and an illustration for each dish (`core/static/core/dishes/`). In the admin, set a dish's **Art** to pick its illustration and tick **Featured** to show it as the Chef's pick. A dish with no art gets a coloured initial. Fonts load from Google Fonts, so the first view needs an internet connection; without it the app falls back to system fonts.
+
 ## Get a public link (Render)
 
 1. Render dashboard, New, Blueprint, pick this repository and the `alpha` branch. It reads `render.yaml`.

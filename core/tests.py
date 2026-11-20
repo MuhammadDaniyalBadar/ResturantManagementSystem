@@ -133,6 +133,23 @@ class Views(TestCase):
         self.assertEqual(self.post(guest, f"/t/{self.table.code}/order/", {"items": []}).status_code, 400)
         self.assertEqual(guest.get("/t/not-a-real-code/").status_code, 404)
 
+    def test_menu_carries_dish_art_and_chefs_pick(self):
+        self.curry.art, self.curry.featured = "makhani", True
+        self.curry.save()
+        page = Client().get(f"/t/{self.table.code}/")
+        dishes = {d["name"]: d for c in page.context["menu"]["categories"] for d in c["dishes"]}
+        self.assertEqual((dishes["Curry"]["art"], dishes["Curry"]["featured"]), ("makhani", True))
+        self.assertEqual((dishes["Naan"]["art"], dishes["Naan"]["featured"]), ("", False))
+
+    def test_kitchen_ticket_has_a_target_time_from_the_dish_prep_time(self):
+        order = services.place_order(self.table, lines(self.curry, self.naan))
+        services.advance_order(order, "waiter")
+        kitchen = Client()
+        kitchen.force_login(self.users["kitchen"])
+        stations = {s["name"]: s["tickets"][0] for s in kitchen.get("/kitchen/data/").json()["stations"]}
+        self.assertEqual(stations["Curry"]["target"], 18 * 60)
+        self.assertEqual(stations["Tandoor"]["target"], 8 * 60)
+
     def test_guest_csrf_is_enforced(self):
         strict = Client(enforce_csrf_checks=True)
         res = strict.post(f"/t/{self.table.code}/call/", json.dumps({"kind": "water"}), content_type="application/json")

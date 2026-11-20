@@ -1,12 +1,21 @@
 {% extends "base.html" %}
-{% block title %}Restaurant system{% endblock %}
+{% load static %}
+{% block title %}Spice table ordering{% endblock %}
 {% block body %}
-<header class="top"><h1>Restaurant system</h1></header>
-<main>
-  <h2>Guests</h2>
-  <p>Scan the QR code on your table to see the menu and order.</p>
-  <h2>Staff</h2>
-  <p><a class="btn" href="{% url 'login' %}">Staff login</a></p>
-  <p class="muted">Alpha version for testing.</p>
+<main class="page" style="min-height: 100vh; display: flex; flex-direction: column; justify-content: center; gap: 40px; padding-top: 40px">
+  <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 40px 60px; justify-content: center">
+    <div class="col" style="gap: 18px; max-width: 520px">
+      <span class="pill rise" style="align-self: flex-start"><span class="livedot"></span>Alpha</span>
+      <h1 class="d rise" style="--i: 1; font-size: clamp(44px, 7vw, 76px); line-height: .98; font-weight: 700">Dinner, ordered from the <span class="gold">table</span>.</h1>
+      <p class="muted rise" style="--i: 2; font-size: 17px">Guests scan the code on their table, order from their phone, and the waiter and kitchen see it the moment it is placed.</p>
+      <div class="row rise" style="--i: 3; gap: 12px; flex-wrap: wrap"><a class="btn" href="{% url 'login' %}">Staff login</a><span class="muted sm">Guests: scan the QR code on your table.</span></div>
+    </div>
+    <div style="position: relative; width: min(420px, 90vw); aspect-ratio: 1">
+      <div style="position: absolute; inset: 8%; border-radius: 50%; background: radial-gradient(circle, rgba(255, 138, 31, .35), transparent 68%)"></div>
+      <img class="plate floaty" src="{% static 'core/dishes/makhani.svg' %}" alt="" style="position: absolute; left: 22%; top: 2%; width: 62%">
+      <img class="plate floaty" src="{% static 'core/dishes/biryani.svg' %}" alt="" style="position: absolute; left: 0; top: 52%; width: 44%; animation-delay: -1.2s">
+      <img class="plate floaty" src="{% static 'core/dishes/chai.svg' %}" alt="" style="position: absolute; right: 0; top: 56%; width: 38%; animation-delay: -2.4s">
+    </div>
+  </div>
 </main>
 {% endblock %}

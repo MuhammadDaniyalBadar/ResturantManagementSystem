@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 160">
+<defs>
+<radialGradient id="w" cx=".4" cy=".35" r=".85"><stop offset="0" stop-color="#c8925a"/><stop offset="1" stop-color="#8a5b34"/></radialGradient>
+<radialGradient id="n" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#f6d596"/><stop offset=".7" stop-color="#e2a85e"/><stop offset="1" stop-color="#c98943"/></radialGradient>
+</defs>
+<circle cx="80" cy="80" r="76" fill="url(#w)"/>
+<circle cx="80" cy="80" r="64" fill="none" stroke="#a87444" stroke-width="2" opacity=".7"/><circle cx="80" cy="80" r="50" fill="none" stroke="#a87444" stroke-width="1.5" opacity=".5"/>
+<path d="M26 88C22 50 66 26 108 36c36 9 36 58 2 80C76 138 30 128 26 88z" fill="url(#n)" stroke="#b4772e" stroke-width="2"/>
+<g fill="#7a4418" opacity=".55"><path d="M46 60q8-6 14 0q-4 8-14 0z"/><path d="M110 92q8-4 12 4q-8 6-12-4z"/><path d="M52 106q8-4 12 2q-6 6-12-2z"/><circle cx="118" cy="70" r="2.5"/><circle cx="42" cy="84" r="2.5"/></g>
+<g fill="#3f9d45"><ellipse cx="62" cy="48" rx="6" ry="2.6" transform="rotate(30 62 48)"/><ellipse cx="86" cy="42" rx="6" ry="2.6" transform="rotate(-20 86 42)"/><ellipse cx="100" cy="64" rx="6" ry="2.6" transform="rotate(60 100 64)"/><ellipse cx="58" cy="76" rx="6" ry="2.6" transform="rotate(-40 58 76)"/><ellipse cx="82" cy="82" rx="6" ry="2.6" transform="rotate(15 82 82)"/><ellipse cx="104" cy="98" rx="6" ry="2.6" transform="rotate(-30 104 98)"/><ellipse cx="70" cy="108" rx="6" ry="2.6" transform="rotate(40 70 108)"/><ellipse cx="46" cy="96" rx="6" ry="2.6" transform="rotate(-10 46 96)"/></g>
+<g fill="#fff6dc" stroke="#e8d3a2" stroke-width="1"><ellipse cx="74" cy="62" rx="7" ry="3" transform="rotate(-25 74 62)"/><ellipse cx="94" cy="86" rx="7" ry="3" transform="rotate(30 94 86)"/><ellipse cx="60" cy="92" rx="7" ry="3" transform="rotate(10 60 92)"/><ellipse cx="108" cy="52" rx="6" ry="2.6" transform="rotate(50 108 52)"/></g>
+<path d="M30 50a54 54 0 0 1 36-24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" opacity=".25"/>
+</svg>

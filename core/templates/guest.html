@@ -1,132 +1,224 @@
 {% extends "base.html" %}
-{% block title %}{{ restaurant.name }} - Table {{ table.number }}{% endblock %}
+{% block title %}{{ restaurant.name }} · Table {{ table.number }}{% endblock %}
+{% block bodyclass %}guest{% endblock %}
 {% block body %}
-<header class="top"><h1>{{ restaurant.name }}</h1><span class="pill">Table {{ table.number }}</span></header>
-<main>
-  <section id="status"></section>
-  <h2>Need something?</h2>
-  <div class="help" id="help"></div>
-  <div id="menu"></div>
-</main>
-<div id="cartpanel" hidden></div>
-<div id="cartbar"><div id="cartsummary" class="muted">Your cart is empty</div><button id="cartbtn" disabled>View order</button></div>
+<div id="app" class="app"></div>
 {{ menu|json_script:"menu-data" }}
 {{ table.code|json_script:"code-data" }}
+{{ restaurant.name|json_script:"rname-data" }}
+{{ table.number|json_script:"tnum-data" }}
 {% endblock %}
 {% block script %}
 <script>
 const $ = (s) => document.querySelector(s);
-const MENU = JSON.parse($('#menu-data').textContent);
-const CODE = JSON.parse($('#code-data').textContent);
-const url = (p) => '/t/' + CODE + '/' + p;
+const MENU = JSON.parse($('#menu-data').textContent), CODE = JSON.parse($('#code-data').textContent);
+const RNAME = JSON.parse($('#rname-data').textContent), TNUM = JSON.parse($('#tnum-data').textContent);
+const CUR = MENU.currency;
+const DISHES = MENU.categories.flatMap((c) => c.dishes.map((d) => ({ ...d, cat: c.name })));
+const byId = Object.fromEntries(DISHES.map((d) => [d.id, d]));
+const SPICE = { Mild: 1, Medium: 2, Hot: 3 };
 const STEPS = ['placed', 'cooking', 'ready', 'served'];
-const cart = new Map(); // "dishId:sizeId" -> {dish, size, qty}
-const unit = (c) => Number(c.size ? c.size.price : c.dish.price);
+const url = (p) => `/t/${CODE}/${p}`;
+const root = $('#app');
+const S = { view: 'menu', cat: 'All', avoid: {}, sheet: null, cart: [], orders: [], requests: [], anim: true, sheetIn: false };
 
-function renderMenu() {
-  const root = $('#menu');
-  root.replaceChildren();
-  for (const cat of MENU.categories) {
-    root.append(h('h2', {}, cat.name));
-    for (const d of cat.dishes) {
-      const sel = d.sizes.length
-        ? h('select', {}, d.sizes.map((s) => h('option', { value: s.id }, s.label + ' - ' + money(MENU.currency, s.price))))
-        : null;
-      const price = d.sizes.length ? 'from ' + money(MENU.currency, Math.min(...d.sizes.map((s) => Number(s.price)))) : money(MENU.currency, d.price);
-      root.append(h('div', { class: 'card dish' },
-        d.image ? h('img', { src: d.image, alt: '', loading: 'lazy' }) : null,
-        h('div', { class: 'body' },
-          h('div', { class: 'row' }, h('span', {}, d.name), h('span', {}, price)),
-          d.description ? h('div', { class: 'muted' }, d.description) : null,
-          h('div', { class: 'tags' },
-            d.spice ? h('span', { class: 'tag' + (d.spice === 'Hot' ? ' hot' : '') }, d.spice) : null,
-            d.allergens.map((a) => h('span', { class: 'tag allergen' }, a))),
-          h('div', { class: 'add' }, sel,
-            h('button', { class: 'small', onclick: () => add(d, sel ? d.sizes.find((s) => String(s.id) === sel.value) : null) }, 'Add')))));
-    }
-  }
+const initials = (n) => n.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+const lowest = (d) => (d.sizes.length ? Math.min(...d.sizes.map((s) => +s.price)) : +d.price);
+const unit = (l) => { const d = byId[l.id]; const z = l.size ? d.sizes.find((s) => String(s.id) === String(l.size)) : null; return z ? +z.price : +d.price; };
+const sizeLabel = (l) => { const d = byId[l.id]; const z = l.size ? d.sizes.find((s) => String(s.id) === String(l.size)) : null; return z ? z.label : ''; };
+const count = () => S.cart.reduce((n, l) => n + l.qty, 0);
+const sub = () => S.cart.reduce((t, l) => t + unit(l) * l.qty, 0);
+const rise = (i = 0) => (S.anim ? { class: 'rise', style: `--i:${i}` } : {});
+const A = (extra) => (S.anim ? 'rise ' : '') + (extra || '');
+
+function go(view) { S.view = view; S.sheet = null; S.anim = true; render(); }
+function addLine(d, size, qty) {
+  const hit = S.cart.find((l) => l.id === d.id && String(l.size) === String(size));
+  if (hit) hit.qty += qty; else S.cart.push({ id: d.id, size, qty, note: '' });
+}
+function quick(d) { addLine(d, d.sizes.length ? d.sizes[0].id : '', 1); toast(d.name + ' added'); render(); }
+function openDish(d) { S.sheet = { d, size: d.sizes.length ? d.sizes[0].id : '', qty: 1 }; S.sheetIn = true; render(); }
+const leftOf = (o) => (o.endsAt ? Math.max(0, Math.round((o.endsAt - Date.now()) / 1000)) : null);
+const focusStatus = () => S.orders.find((o) => o.status === 'cooking') || S.orders[0];
+const statusWord = () => { const o = focusStatus(); return { placed: 'Placed', cooking: 'Cooking', ready: 'Ready' }[o.status] || o.label; };
+
+/* ---------- pieces ---------- */
+function topbar() {
+  return h('div', { class: 'row', style: 'padding:24px 18px 6px;gap:12px;flex:none' },
+    h('div', { class: 'logo' }, initials(RNAME)),
+    h('div', { class: 'grow' }, h('div', { class: 'bb', style: 'font-size:16px;line-height:1.1' }, RNAME), h('div', { class: 'muted sm' }, 'Table ' + TNUM + ' · Dine-in')),
+    S.orders.length ? h('button', { class: 'chip on sm', onclick: () => go('status') }, h('span', { class: 'livedot', style: 'width:8px;height:8px' }), statusWord()) : null,
+    h('button', { class: 'iconbtn glass', 'aria-label': 'Call the waiter', onclick: () => go('call') }, icon('bell', 22, 1.9)));
+}
+function backbar(title, to, extra) {
+  return h('div', { class: 'row', style: 'padding:58px 18px 12px;gap:12px;flex:none' },
+    h('button', { class: 'back', 'aria-label': 'Back', onclick: () => go(to) }, icon('back')),
+    h('h1', { class: 'd grow', style: 'font-size:32px;font-weight:700' }, title), extra);
+}
+const priceLine = (d) => h('span', { class: 'col', style: 'gap:0;padding-right:48px' },
+  h('span', { class: 'muted sm', style: 'min-height:16px' }, d.sizes.length ? 'from' : ''),
+  h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:#ffcb62;white-space:nowrap' }, money(CUR, lowest(d))));
+function gridCard(d, i) {
+  return h('div', { class: A('gcard'), style: `--i:${i}` },
+    h('div', { class: 'pslot' }, plate(d.art, d.name, 116)),
+    h('button', { class: 'gmain', onclick: () => openDish(d) },
+      h('span', { class: 'bb', style: 'font-size:15px;line-height:1.2' }, d.name),
+      h('span', { class: 'muted sm', style: 'min-height:34px' }, d.description), priceLine(d)),
+    h('button', { class: 'plus', 'aria-label': 'Add ' + d.name, onclick: () => quick(d) }, icon('plus', 20, 2.6)));
+}
+function pickCard(d) {
+  return h('div', { class: A('pick'), style: '--i:1' },
+    h('div', { class: 'pslot floaty' }, plate(d.art, d.name, 170)),
+    h('div', { class: 'col', style: 'gap:6px;max-width:160px' },
+      h('span', { class: 'tag', style: 'align-self:flex-start;background:rgba(255,255,255,.22);color:#fff' }, "Chef's pick"),
+      h('h2', { class: 'd', style: 'font-size:27px;line-height:1.02;font-weight:700' }, d.name),
+      h('span', { style: 'color:#ffe9cf' }, (d.sizes.length ? 'from ' : '') + money(CUR, lowest(d))),
+      h('button', { class: 'btn sm', style: 'align-self:flex-start;margin-top:6px;background:#120d0b;color:#fff4e8;box-shadow:none', onclick: () => openDish(d) }, 'Order now')));
+}
+function floatbar() {
+  if (!count()) return null;
+  return h('div', { class: 'floatbar' },
+    h('span', { class: 'col', style: 'gap:0' }, h('span', { class: 'sm muted' }, count() + (count() === 1 ? ' item' : ' items')), h('span', { class: 'd', style: 'font-size:23px;font-weight:700' }, money(CUR, sub()))),
+    h('button', { class: 'btn', onclick: () => go('cart') }, 'View order'));
+}
+function sheet() {
+  if (!S.sheet) return null;
+  const { d } = S.sheet, z = d.sizes.find((s) => String(s.id) === String(S.sheet.size)), price = z ? +z.price : +d.price;
+  const pairs = DISHES.filter((x) => x.id !== d.id && x.cat !== d.cat && !x.sizes.length).slice(0, 2);
+  const inn = S.sheetIn ? ' in' : '';
+  return [
+    h('button', { class: 'shade' + inn, 'aria-label': 'Close', onclick: () => { S.sheet = null; render(); } }),
+    h('div', { class: 'sheet' + inn },
+      h('div', { class: 'grab' }),
+      h('div', { style: 'position:relative;display:flex;justify-content:center;padding:8px 0 2px' },
+        h('div', { style: 'position:absolute;top:14px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,176,32,.32),transparent 68%)' }),
+        h('div', { class: 'floaty', style: 'position:relative' }, plate(d.art, d.name, 200))),
+      h('div', { class: 'spread', style: 'align-items:flex-start' },
+        h('h2', { class: 'd', style: 'font-size:31px;line-height:1.02;font-weight:700' }, d.name),
+        SPICE[d.spice] ? h('span', { class: 'flames', 'aria-label': d.spice + ' spice' }, [1, 2, 3].map((n) => h('span', { class: n <= SPICE[d.spice] ? 'on' : '' }, flame()))) : null),
+      h('p', { class: 'muted' }, d.description),
+      h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, d.allergens.map((a) => h('span', { class: 'tag al' }, a))),
+      d.sizes.length ? h('div', { class: 'seg' }, d.sizes.map((s) => h('button', { class: String(S.sheet.size) === String(s.id) ? 'on' : '', onclick: () => { S.sheet.size = s.id; render(); } }, s.label + ' · ' + money(CUR, s.price)))) : null,
+      pairs.length ? h('div', { class: 'card flat', style: 'gap:12px;padding:14px' }, h('span', { class: 'bb' }, 'Goes well with'),
+        pairs.map((x) => h('div', { class: 'row', style: 'gap:12px' }, plate(x.art, x.name, 46, 'flat'), h('span', { class: 'grow' }, x.name + ' ', h('span', { class: 'muted' }, '+' + money(CUR, x.price))), h('button', { class: 'btn ghost sm', onclick: () => { addLine(x, '', 1); toast(x.name + ' added'); render(); } }, 'Add')))) : null,
+      h('div', { class: 'row', style: 'gap:12px' },
+        h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { S.sheet.qty = Math.max(1, S.sheet.qty - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, S.sheet.qty), h('button', { 'aria-label': 'More', onclick: () => { S.sheet.qty += 1; render(); } }, icon('plus', 16, 2.4))),
+        h('button', { class: 'btn grow', onclick: () => { addLine(d, S.sheet.size, S.sheet.qty); S.sheet = null; toast(d.name + ' added'); render(); } }, 'Add to order · ' + money(CUR, price * S.sheet.qty)))),
+  ];
 }
 
-function add(dish, size) {
-  const key = dish.id + ':' + (size ? size.id : '');
-  const line = cart.get(key) || { dish, size, qty: 0 };
-  line.qty += 1;
-  cart.set(key, line);
-  renderCart();
-  toast('Added ' + dish.name);
+/* ---------- views ---------- */
+function menuView() {
+  const allergens = [...new Set(DISHES.flatMap((d) => d.allergens))].slice(0, 4);
+  const vis = DISHES.filter((d) => (S.cat === 'All' || d.cat === S.cat) && !d.allergens.some((a) => S.avoid[a]));
+  const hidden = DISHES.filter((d) => d.allergens.some((a) => S.avoid[a])).length;
+  const pick = DISHES.find((d) => d.featured);
+  const cats = ['All', ...MENU.categories.map((c) => c.name)];
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, topbar(),
+    h('div', { class: 'scroll', style: 'padding:8px 18px 130px' },
+      h('h1', { class: A('d'), style: 'font-size:36px;line-height:1.02;font-weight:700;padding:10px 0 ' + (pick ? '38px' : '18px') }, 'What are you ', h('span', { class: 'gold' }, 'craving'), ' tonight?'),
+      pick ? pickCard(pick) : null,
+      h('div', { class: 'row', style: 'padding:22px 0 8px;gap:8px;overflow-x:auto;scrollbar-width:none' }, cats.map((c) => h('button', { class: 'chip' + (S.cat === c ? ' on' : ''), onclick: () => { S.cat = c; render(); } }, c))),
+      allergens.length ? h('div', { class: 'row', style: 'padding:4px 0 6px;gap:8px;flex-wrap:wrap' }, h('span', { class: 'muted sm b' }, 'Avoid'), allergens.map((a) => h('button', { class: 'chip sm' + (S.avoid[a] ? ' on' : ''), onclick: () => { S.avoid[a] = !S.avoid[a]; render(); } }, a))) : null,
+      hidden ? h('div', { class: 'sm muted b' }, hidden + ' dishes hidden for what you avoid') : null,
+      h('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px' }, vis.map((d, i) => gridCard(d, i)))),
+    floatbar(), sheet());
 }
-
-function change(key, by) {
-  const line = cart.get(key);
-  line.qty += by;
-  if (line.qty <= 0) cart.delete(key);
-  renderCart();
+function cartView() {
+  const lines = S.cart.map((l, i) => {
+    const d = byId[l.id];
+    return h('div', { class: A('card'), style: `--i:${i};flex-direction:row;gap:14px;align-items:center;padding:12px` },
+      plate(d.art, d.name, 64),
+      h('div', { class: 'col grow', style: 'gap:8px' },
+        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:#ffcb62' }, money(CUR, unit(l) * l.qty))),
+        h('div', { class: 'spread' },
+          h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { l.qty -= 1; if (l.qty < 1) S.cart.splice(i, 1); render(); } }, icon('minus', 14, 2.6)), h('span', {}, l.qty), h('button', { 'aria-label': 'More', onclick: () => { l.qty += 1; render(); } }, icon('plus', 14, 2.6))),
+          h('input', { id: 'note-' + i, style: 'width:120px;padding:8px 10px;font-size:12px', 'aria-label': 'Note for the kitchen', placeholder: 'Add a note', value: l.note, maxlength: 140, oninput: (e) => { l.note = e.target.value; } }))));
+  });
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your order', 'menu', h('span', { class: 'pill' }, 'Table ' + TNUM)),
+    h('div', { class: 'scroll col', style: 'padding:10px 18px 12px;gap:12px' }, lines.length ? lines : h('div', { class: 'empty' }, 'Your cart is empty.'), h('button', { class: 'btn ghost wide', onclick: () => go('menu') }, '+ Add more dishes')),
+    h('div', { class: 'col', style: 'padding:18px 20px 30px;gap:12px;background:linear-gradient(180deg,#261c16,#1c1511);border-radius:32px 32px 0 0;border-top:1px solid #3b2d24;box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
+      h('div', { class: 'spread' }, h('span', { class: 'muted' }, 'Subtotal'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700' }, money(CUR, sub()))),
+      h('p', { class: 'muted sm' }, 'The restaurant confirms your final price. Service charge and tax are added to your bill.'),
+      h('button', { class: 'btn wide', disabled: !S.cart.length, onclick: place }, 'Place order')));
 }
-
-function renderCart() {
-  const lines = [...cart.entries()];
-  const count = lines.reduce((n, [, c]) => n + c.qty, 0);
-  const total = lines.reduce((t, [, c]) => t + c.qty * unit(c), 0);
-  $('#cartsummary').textContent = count ? count + ' item' + (count > 1 ? 's' : '') + ' · ' + money(MENU.currency, total) : 'Your cart is empty';
-  $('#cartbtn').disabled = !count;
-  const panel = $('#cartpanel');
-  if (!count) panel.hidden = true;
-  $('#cartbtn').textContent = panel.hidden ? 'View order' : 'Close';
-  panel.replaceChildren(
-    h('h3', {}, 'Your order'),
-    ...lines.map(([key, c]) => h('div', { class: 'line' },
-      h('div', {}, c.dish.name, c.size ? h('div', { class: 'muted' }, c.size.label) : null),
-      h('div', { class: 'qty' },
-        h('button', { class: 'ghost small', onclick: () => change(key, -1) }, '−'), c.qty,
-        h('button', { class: 'ghost small', onclick: () => change(key, 1) }, '+')),
-      h('div', {}, money(MENU.currency, c.qty * unit(c))))),
-    h('p', { class: 'muted' }, 'The restaurant confirms your final price.'),
-    h('button', { id: 'place', style: 'width:100%', onclick: place }, 'Place order · ' + money(MENU.currency, total)));
-}
-
 async function place() {
-  $('#place').disabled = true;
   await act(async () => {
-    await api(url('order/'), {
-      items: [...cart.values()].map((c) => ({ dish_id: c.dish.id, size_id: c.size ? c.size.id : null, quantity: c.qty })),
-    });
-    cart.clear();
-    toast('Order placed');
+    await api(url('order/'), { items: S.cart.map((l) => ({ dish_id: l.id, size_id: l.size || null, quantity: l.qty, note: l.note })) });
+    S.cart = []; S.view = 'placed'; S.anim = true;
   }, refreshState);
-  renderCart();
+  render();
+}
+function placedView() {
+  return h('div', { class: 'screen scr', style: 'align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center' },
+    h('div', { class: 'pop', style: 'width:104px;height:104px;border-radius:50%;background:linear-gradient(160deg,#ffc247,#ff8a1f);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 12px rgba(255,176,32,.12),0 20px 44px rgba(255,138,31,.45);color:#2a1400' },
+      svg('<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
+    h('h1', { class: 'd rise', style: '--i:2;font-size:40px;font-weight:700' }, 'Order ', h('span', { class: 'gold' }, 'placed')),
+    h('p', { class: 'muted rise', style: '--i:3' }, 'Table ' + TNUM + '. Your waiter has it.'),
+    h('button', { class: 'btn rise', style: '--i:4;min-width:220px', onclick: () => go('status') }, 'Track my order'));
+}
+function ringCard(o) {
+  const left = leftOf(o), est = Math.max(1, o.estimate), first = o.items[0];
+  return h('div', { class: A('card'), style: '--i:0;padding:22px 18px 18px;box-shadow:var(--shadow-m)' },
+    h('div', { 'data-est': est, class: 'col', style: 'align-items:center;gap:18px' },
+      h('div', { style: 'position:relative;width:200px;height:200px' },
+        svg(`<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><circle class="bg" cx="100" cy="100" r="74"/><circle class="fg" cx="100" cy="100" r="74" style="stroke-dashoffset:${(464.9 * (1 - left / est)).toFixed(1)}"/></svg>`),
+        h('div', { class: 'spin', style: 'position:absolute;left:42px;top:42px' }, plate(first.art, first.name, 116))),
+      h('div', { class: 'col', style: 'align-items:center;gap:0' }, h('span', { class: 'd num', style: 'font-size:54px;font-weight:700;line-height:1' }, countdown(left)), h('span', { class: 'muted sm b' }, 'minutes left, about'))));
+}
+function orderCard(o, i) {
+  const step = STEPS.indexOf(o.status);
+  const msg = { placed: 'Waiting for the waiter to confirm your order.', cooking: 'The kitchen is cooking it now.', ready: 'Your food is ready and on its way to you.' }[o.status];
+  return h('div', { class: A('card'), style: `--i:${i + 1};gap:12px` },
+    h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Order #' + o.id), h('span', { class: 'st ' + (o.status === 'placed' ? 'ordering' : 'eating') }, o.label)),
+    h('div', { class: 'steps' }, STEPS.map((s, n) => h('div', { class: (n <= step ? 'on' : '') + (n === step ? ' now' : '') }, h('i'), s[0].toUpperCase() + s.slice(1)))),
+    h('p', { class: 'muted' }, msg),
+    h('ul', { class: 'col', style: 'gap:10px' }, o.items.map((it) => h('li', { class: 'row', style: 'gap:12px' }, plate(it.art, it.name, 34, 'flat'), h('span', { class: 'grow' }, it.qty + ' × ' + it.name + (it.size ? ' (' + it.size + ')' : ''), it.note ? h('span', { class: 'muted sm', style: 'display:block' }, 'Note: ' + it.note) : null)))),
+    h('div', { class: 'spread', style: 'border-top:1.5px dashed var(--line);padding-top:10px' }, h('span', { class: 'muted' }, 'Total'), h('span', { class: 'd num bb', style: 'font-size:20px' }, money(CUR, o.total))));
+}
+function statusView() {
+  const o = focusStatus();
+  const title = !o ? ['Nothing ordered yet'] : o.status === 'ready' ? ['Your food is ', h('span', { class: 'gold' }, 'ready')] : o.status === 'cooking' ? ['Your food is ', h('span', { class: 'gold' }, 'cooking')] : ['Order ', h('span', { class: 'gold' }, 'received')];
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') },
+    h('div', { class: 'hero', style: 'padding:58px 20px 22px;flex:none' }, h('div', { class: 'row', style: 'position:relative;z-index:1;gap:12px' },
+      h('button', { class: 'iconbtn glass', 'aria-label': 'Back to the menu', onclick: () => go('menu') }, icon('back')),
+      h('div', { class: 'grow' }, h('div', { class: 'sm muted' }, 'Table ' + TNUM + ' · ' + RNAME), h('h1', { class: 'd', style: 'font-size:30px;font-weight:700;line-height:1.05' }, title)))),
+    h('div', { class: 'scroll col', style: 'padding:4px 18px 22px;gap:14px' },
+      o && o.status === 'cooking' && o.endsAt ? ringCard(o) : null,
+      S.orders.length ? S.orders.map(orderCard) : h('div', { class: 'empty' }, 'Order something and follow it here.'),
+      h('div', { class: 'row', style: 'gap:10px' }, h('button', { class: 'btn ghost grow', onclick: () => go('menu') }, '+ Add items'), h('button', { class: 'btn dark grow', onclick: () => go('call') }, 'Call waiter'))));
+}
+const KINDS = [['water', 'Water', 'drop'], ['napkins', 'Napkins', 'napkin'], ['bill', 'Bill', 'receipt'], ['call', 'Call waiter', 'bell']];
+function callView() {
+  const open = (k) => S.requests.find((r) => r.kind === k);
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Need something?', S.orders.length ? 'status' : 'menu'),
+    h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:16px' },
+      h('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px' }, KINDS.map(([k, label, ic], i) =>
+        h('button', { class: A('callopt') + (open(k) ? ' on' : ''), style: `--i:${i}`, onclick: () => act(async () => { await api(url('call/'), { kind: k }); toast(label + ' requested'); }, refreshState) }, icon(ic, 38, 1.7), label))),
+      S.requests.map((r) => h('div', { class: 'card pop', style: 'gap:10px;padding:18px' },
+        h('div', { class: 'spread' }, h('span', { class: 'bb', style: 'font-size:16px' }, r.label), r.status === 'acknowledged' ? h('span', { class: 'st eating' }, 'On the way') : h('span', { class: 'st bill' }, 'Sent to staff')),
+        h('p', { class: 'muted' }, r.status === 'acknowledged' ? 'A waiter is coming to your table.' : 'Your waiter has been alerted. We will tell you the moment someone picks it up.')))));
+}
+const VIEWS = { menu: menuView, cart: cartView, placed: placedView, status: statusView, call: callView };
+
+function render() {
+  const keep = [...root.querySelectorAll('.scroll')].map((e) => e.scrollTop);
+  const a = document.activeElement, focus = a && a.id ? [a.id, a.selectionStart, a.selectionEnd] : null;
+  root.replaceChildren(VIEWS[S.view]());
+  root.querySelectorAll('.scroll').forEach((e, i) => { if (keep[i]) e.scrollTop = keep[i]; });
+  if (focus) { const el = document.getElementById(focus[0]); if (el) { el.focus(); try { el.setSelectionRange(focus[1], focus[2]); } catch (e) { /* not text */ } } }
+  S.anim = false; S.sheetIn = false;
 }
 
 async function refreshState() {
   const s = await api(url('state/'));
-  const root = $('#status');
-  root.replaceChildren();
-  if (s.orders.length || s.requests.length) root.append(h('h2', {}, 'Your table'));
-  for (const o of s.orders) {
-    const step = STEPS.indexOf(o.status);
-    const msg = { placed: 'Waiting for the waiter to confirm your order', cooking: 'Your food is being cooked', ready: 'Your food is ready and on its way' }[o.status];
-    root.append(h('div', { class: 'card' },
-      h('strong', {}, 'Order #' + o.id + ' · ' + o.label),
-      h('div', { class: 'steps' }, STEPS.map((_, i) => h('span', { class: i <= step ? 'on' : '' }))),
-      h('div', { class: 'muted' }, msg),
-      o.seconds_left === null ? null
-        : o.seconds_left === 0 ? h('div', { class: 'big' }, 'Almost ready')
-        : h('div', { class: 'big' }, countdown(o.seconds_left), ' left (estimate)'),
-      h('ul', {}, o.items.map((i) => h('li', {}, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : '')))),
-      h('div', { class: 'muted' }, 'Total ' + money(MENU.currency, o.total))));
-  }
-  for (const r of s.requests) {
-    root.append(h('div', { class: 'card' }, r.label + ' · ' + (r.status === 'acknowledged' ? 'on the way' : 'sent to staff')));
-  }
+  const now = Date.now();
+  S.orders = s.orders.map((o) => ({ ...o, endsAt: o.seconds_left === null ? null : now + o.seconds_left * 1000 }));
+  S.requests = s.requests;
+  render();
 }
 
-const HELP = [['water', 'Water'], ['napkins', 'Napkins'], ['bill', 'Bill'], ['call', 'Call waiter']];
-$('#help').replaceChildren(...HELP.map(([kind, label]) =>
-  h('button', { onclick: () => act(async () => { await api(url('call/'), { kind }); toast(label + ' requested'); }, refreshState) }, label)));
-
-$('#cartbtn').addEventListener('click', () => { $('#cartpanel').hidden = !$('#cartpanel').hidden; renderCart(); });
-
-renderMenu();
-renderCart();
+render();
 live('/ws/t/' + CODE + '/', refreshState);
 </script>
 {% endblock %}
