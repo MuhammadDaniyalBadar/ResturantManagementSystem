@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Restaurant system{% endblock %}
+{% block body %}
+<header class="top"><h1>Restaurant system</h1></header>
+<main>
+  <h2>Guests</h2>
+  <p>Scan the QR code on your table to see the menu and order.</p>
+  <h2>Staff</h2>
+  <p><a class="btn" href="{% url 'login' %}">Staff login</a></p>
+  <p class="muted">Alpha version for testing.</p>
+</main>
+{% endblock %}

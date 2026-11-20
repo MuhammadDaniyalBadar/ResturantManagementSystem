@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Kitchen - {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}kitchen{% endblock %}
+{% block body %}
+<header class="top">
+  <h1>{{ restaurant.name }} · Kitchen</h1>
+  <nav>
+    {% if request.user.profile.role == "owner" %}<a href="{% url 'staff' %}">Staff</a>{% endif %}
+    <form method="post" action="{% url 'logout' %}" style="margin:0">{% csrf_token %}<button class="ghost small">Log out</button></form>
+  </nav>
+</header>
+<main class="wide"><div class="board" id="board"></div></main>
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+
+function ticket(station, t) {
+  return h('div', { class: 'card ticket' },
+    h('div', { class: 'head' }, h('span', { class: 'big' }, 'Table ' + t.table), h('span', {}, elapsed(t.elapsed))),
+    h('ul', {}, t.items.map((i) => h('li', { style: i.ready ? 'opacity:.5;text-decoration:line-through' : '' },
+      i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : ''),
+      i.note ? h('div', { class: 'note' }, 'Note: ' + i.note) : null))),
+    h('button', { class: 'ok', onclick: (e) => { e.target.disabled = true; act(() => api('/kitchen/orders/' + t.order_id + '/ready/', { station }), refresh); } }, 'Ready'));
+}
+
+async function refresh() {
+  const d = await api('/kitchen/data/');
+  $('#board').replaceChildren(...(d.stations.length
+    ? d.stations.map((s) => h('div', { class: 'col' }, h('h2', {}, s.name + ' (' + s.tickets.length + ')'), s.tickets.map((t) => ticket(s.name, t))))
+    : [h('div', { class: 'empty' }, 'No orders cooking right now.')]));
+}
+
+live('/ws/staff/', refresh);
+</script>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf" content="{{ csrf_token }}">
+  <title>{% block title %}Restaurant{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'core/app.css' %}">
+</head>
+<body class="{% block bodyclass %}{% endblock %}">
+{% block body %}{% endblock %}
+<script src="{% static 'core/app.js' %}"></script>
+{% block script %}{% endblock %}
+</body>
+</html>

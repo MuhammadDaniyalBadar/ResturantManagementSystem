@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}{{ restaurant.name }} - Table {{ table.number }}{% endblock %}
+{% block body %}
+<header class="top"><h1>{{ restaurant.name }}</h1><span class="pill">Table {{ table.number }}</span></header>
+<main>
+  <section id="status"></section>
+  <h2>Need something?</h2>
+  <div class="help" id="help"></div>
+  <div id="menu"></div>
+</main>
+<div id="cartpanel" hidden></div>
+<div id="cartbar"><div id="cartsummary" class="muted">Your cart is empty</div><button id="cartbtn" disabled>View order</button></div>
+{{ menu|json_script:"menu-data" }}
+{{ table.code|json_script:"code-data" }}
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+const MENU = JSON.parse($('#menu-data').textContent);
+const CODE = JSON.parse($('#code-data').textContent);
+const url = (p) => '/t/' + CODE + '/' + p;
+const STEPS = ['placed', 'cooking', 'ready', 'served'];
+const cart = new Map(); // "dishId:sizeId" -> {dish, size, qty}
+const unit = (c) => Number(c.size ? c.size.price : c.dish.price);
+
+function renderMenu() {
+  const root = $('#menu');
+  root.replaceChildren();
+  for (const cat of MENU.categories) {
+    root.append(h('h2', {}, cat.name));
+    for (const d of cat.dishes) {
+      const sel = d.sizes.length
+        ? h('select', {}, d.sizes.map((s) => h('option', { value: s.id }, s.label + ' - ' + money(MENU.currency, s.price))))
+        : null;
+      const price = d.sizes.length ? 'from ' + money(MENU.currency, Math.min(...d.sizes.map((s) => Number(s.price)))) : money(MENU.currency, d.price);
+      root.append(h('div', { class: 'card dish' },
+        d.image ? h('img', { src: d.image, alt: '', loading: 'lazy' }) : null,
+        h('div', { class: 'body' },
+          h('div', { class: 'row' }, h('span', {}, d.name), h('span', {}, price)),
+          d.description ? h('div', { class: 'muted' }, d.description) : null,
+          h('div', { class: 'tags' },
+            d.spice ? h('span', { class: 'tag' + (d.spice === 'Hot' ? ' hot' : '') }, d.spice) : null,
+            d.allergens.map((a) => h('span', { class: 'tag allergen' }, a))),
+          h('div', { class: 'add' }, sel,
+            h('button', { class: 'small', onclick: () => add(d, sel ? d.sizes.find((s) => String(s.id) === sel.value) : null) }, 'Add')))));
+    }
+  }
+}
+
+function add(dish, size) {
+  const key = dish.id + ':' + (size ? size.id : '');
+  const line = cart.get(key) || { dish, size, qty: 0 };
+  line.qty += 1;
+  cart.set(key, line);
+  renderCart();
+  toast('Added ' + dish.name);
+}
+
+function change(key, by) {
+  const line = cart.get(key);
+  line.qty += by;
+  if (line.qty <= 0) cart.delete(key);
+  renderCart();
+}
+
+function renderCart() {
+  const lines = [...cart.entries()];
+  const count = lines.reduce((n, [, c]) => n + c.qty, 0);
+  const total = lines.reduce((t, [, c]) => t + c.qty * unit(c), 0);
+  $('#cartsummary').textContent = count ? count + ' item' + (count > 1 ? 's' : '') + ' · ' + money(MENU.currency, total) : 'Your cart is empty';
+  $('#cartbtn').disabled = !count;
+  const panel = $('#cartpanel');
+  if (!count) panel.hidden = true;
+  $('#cartbtn').textContent = panel.hidden ? 'View order' : 'Close';
+  panel.replaceChildren(
+    h('h3', {}, 'Your order'),
+    ...lines.map(([key, c]) => h('div', { class: 'line' },
+      h('div', {}, c.dish.name, c.size ? h('div', { class: 'muted' }, c.size.label) : null),
+      h('div', { class: 'qty' },
+        h('button', { class: 'ghost small', onclick: () => change(key, -1) }, '−'), c.qty,
+        h('button', { class: 'ghost small', onclick: () => change(key, 1) }, '+')),
+      h('div', {}, money(MENU.currency, c.qty * unit(c))))),
+    h('p', { class: 'muted' }, 'The restaurant confirms your final price.'),
+    h('button', { id: 'place', style: 'width:100%', onclick: place }, 'Place order · ' + money(MENU.currency, total)));
+}
+
+async function place() {
+  $('#place').disabled = true;
+  await act(async () => {
+    await api(url('order/'), {
+      items: [...cart.values()].map((c) => ({ dish_id: c.dish.id, size_id: c.size ? c.size.id : null, quantity: c.qty })),
+    });
+    cart.clear();
+    toast('Order placed');
+  }, refreshState);
+  renderCart();
+}
+
+async function refreshState() {
+  const s = await api(url('state/'));
+  const root = $('#status');
+  root.replaceChildren();
+  if (s.orders.length || s.requests.length) root.append(h('h2', {}, 'Your table'));
+  for (const o of s.orders) {
+    const step = STEPS.indexOf(o.status);
+    const msg = { placed: 'Waiting for the waiter to confirm your order', cooking: 'Your food is being cooked', ready: 'Your food is ready and on its way' }[o.status];
+    root.append(h('div', { class: 'card' },
+      h('strong', {}, 'Order #' + o.id + ' · ' + o.label),
+      h('div', { class: 'steps' }, STEPS.map((_, i) => h('span', { class: i <= step ? 'on' : '' }))),
+      h('div', { class: 'muted' }, msg),
+      o.seconds_left === null ? null
+        : o.seconds_left === 0 ? h('div', { class: 'big' }, 'Almost ready')
+        : h('div', { class: 'big' }, countdown(o.seconds_left), ' left (estimate)'),
+      h('ul', {}, o.items.map((i) => h('li', {}, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : '')))),
+      h('div', { class: 'muted' }, 'Total ' + money(MENU.currency, o.total))));
+  }
+  for (const r of s.requests) {
+    root.append(h('div', { class: 'card' }, r.label + ' · ' + (r.status === 'acknowledged' ? 'on the way' : 'sent to staff')));
+  }
+}
+
+const HELP = [['water', 'Water'], ['napkins', 'Napkins'], ['bill', 'Bill'], ['call', 'Call waiter']];
+$('#help').replaceChildren(...HELP.map(([kind, label]) =>
+  h('button', { onclick: () => act(async () => { await api(url('call/'), { kind }); toast(label + ' requested'); }, refreshState) }, label)));
+
+$('#cartbtn').addEventListener('click', () => { $('#cartpanel').hidden = !$('#cartpanel').hidden; renderCart(); });
+
+renderMenu();
+renderCart();
+live('/ws/t/' + CODE + '/', refreshState);
+</script>
+{% endblock %}

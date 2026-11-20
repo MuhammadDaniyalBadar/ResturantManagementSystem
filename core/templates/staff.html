@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Staff - {{ restaurant.name }}{% endblock %}
+{% block body %}
+<header class="top">
+  <h1>{{ restaurant.name }} · Staff</h1>
+  <nav>
+    {% if role == "owner" %}<a href="{% url 'kitchen' %}">Kitchen</a><a href="{% url 'qr' %}">QR codes</a><a href="/admin/">Menu &amp; tables</a>{% endif %}
+    <form method="post" action="{% url 'logout' %}" style="margin:0">{% csrf_token %}<button class="ghost small">Log out</button></form>
+  </nav>
+</header>
+<main class="wide"><div class="board" id="board"></div></main>
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+
+function orderCard(o) {
+  return h('div', { class: 'card ticket' },
+    h('div', { class: 'head' }, h('span', { class: 'big' }, 'Table ' + o.table), h('span', { class: 'muted' }, '#' + o.id + ' · ' + ago(o.seconds_old))),
+    h('ul', {}, o.items.map((i) => h('li', {}, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : ''),
+      i.note ? h('div', { class: 'note' }, 'Note: ' + i.note) : null))),
+    o.status === 'cooking' && o.seconds_left !== null ? h('div', { class: 'muted' }, 'About ', countdown(o.seconds_left), ' left') : null,
+    o.action ? h('button', { class: 'ok', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/orders/' + o.id + '/advance/', {}), refresh); } }, o.action) : null);
+}
+
+function requestCard(r) {
+  return h('div', { class: 'card ticket' },
+    h('div', { class: 'head' }, h('span', { class: 'big' }, 'Table ' + r.table), h('span', { class: 'muted' }, ago(r.seconds_old))),
+    h('div', {}, h('strong', {}, r.label), ' · ' + r.status_label),
+    h('div', { class: 'add' },
+      r.status === 'open' ? h('button', { class: 'small', onclick: () => act(() => api('/staff/requests/' + r.id + '/ack/', {}), refresh) }, 'On my way') : null,
+      h('button', { class: 'small ok', onclick: () => act(() => api('/staff/requests/' + r.id + '/done/', {}), refresh) }, 'Done')));
+}
+
+function column(title, cards, emptyText) {
+  return h('div', { class: 'col' }, h('h2', {}, title + ' (' + cards.length + ')'), cards.length ? cards : h('div', { class: 'empty' }, emptyText));
+}
+
+async function refresh() {
+  const d = await api('/staff/data/');
+  const by = (s) => d.orders.filter((o) => o.status === s).map(orderCard);
+  $('#board').replaceChildren(
+    column('Service requests', d.requests.map(requestCard), 'No one is asking for anything.'),
+    column('New orders', by('placed'), 'No new orders.'),
+    column('In the kitchen', by('cooking'), 'Nothing cooking.'),
+    column('Ready to serve', by('ready'), 'Nothing waiting.'));
+}
+
+live('/ws/staff/', refresh);
+</script>
+{% endblock %}

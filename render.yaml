@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: restaurant-alpha
+    runtime: docker
+    plan: free
+    healthCheckPath: /
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEMO_PASSWORD
+        generateValue: true
+      - key: DEBUG
+        value: "0"
+      - key: BEHIND_PROXY
+        value: "1"
