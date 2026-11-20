@@ -239,3 +239,199 @@ class LiveUpdates(TransactionTestCase):
         self.assertTrue(await other_staff.receive_nothing())
         for c in (guest, staff, other_staff):
             await c.disconnect()
+
+
+from decimal import Decimal  # noqa: E402
+
+from django.core import mail  # noqa: E402
+
+from .models import Bill, Deal, Guest, Member, Payment, QuizQuestion, Review  # noqa: E402
+
+
+class Dining(TestCase):
+    """The reel's flow after the order: shared tables, deals, bill split, tip, paying, rewards, reviews, quiz, floor, owner."""
+
+    def setUp(self):
+        self.r, self.table, self.curry, self.naan, self.users = make_restaurant("A")
+        self.r.reward_rate = 10
+        self.r.save()
+        self.lassi = Dish.objects.create(restaurant=self.r, category=self.curry.category, name="Lassi", price=180, station="Drinks", prep_minutes=4)
+        self.a = services.join_guest(self.table, "Aman")
+        self.b = services.join_guest(self.table, "Riya")
+
+    def ordered(self):
+        order = services.place_order(self.table, lines(self.curry, self.naan), self.a)  # 2 x 300 + 3 x 80 = 840
+        return order, order.bill
+
+    def test_bill_adds_service_and_tax_then_splits(self):
+        _, bill = self.ordered()
+        s = services.bill_summary(bill)
+        self.assertEqual((s["sub"], s["service"], s["tax"], s["base"]), (840, 42, 88, 970))
+        bill.split = 2
+        self.assertEqual(services.bill_summary(bill)["share"], 485)
+
+    def test_two_guests_share_one_bill_and_pay_their_halves_with_tips(self):
+        _, bill = self.ordered()
+        services.request_payment(bill, self.a, "card", 10, "aman@example.com", 2)
+        with self.assertRaises(services.OrderError):
+            services.request_payment(bill, self.a, "cash", 0, "", 2)  # one choice each
+        services.request_payment(bill, self.b, "apple", 0, "", 5)  # the first person's split holds
+        bill.refresh_from_db()
+        self.assertEqual((bill.status, bill.split), (Bill.PAYING, 2))
+        first, second = bill.payments.order_by("id")
+        self.assertEqual((first.share, first.tip, first.amount, second.amount), (485, 49, 534, 485))
+        with self.assertRaises(services.OrderError):  # a third share does not exist
+            services.request_payment(bill, services.join_guest(self.table, "Third"), "cash", 0, "", 2)
+        with self.assertRaises(PermissionDenied):
+            services.confirm_payment(first, "kitchen")
+        services.confirm_payment(first, "waiter")
+        bill.refresh_from_db()
+        self.assertEqual(bill.status, Bill.PAYING)
+        services.confirm_payment(second, "waiter")
+        bill.refresh_from_db()
+        self.assertEqual(bill.status, Bill.PAID)
+        self.assertIsNotNone(bill.paid_at)
+        self.assertEqual(ServiceRequest.objects.filter(table=self.table).exclude(status="done").count(), 0)
+        self.assertEqual(len(mail.outbox), 1)  # only the guest who gave an email
+        self.assertIn("Bill total  Rs 970", mail.outbox[0].body)
+        self.assertIn("Paid by Card  Rs 534", mail.outbox[0].body)
+        self.assertNotEqual(services.get_bill(self.table).pk, bill.pk)  # the next party gets a fresh bill
+
+    def test_rewards_go_to_the_member_when_the_bill_closes(self):
+        _, bill = self.ordered()
+        member = services.join_member(self.r, "Aman@Example.com")
+        self.assertEqual(member.email, "aman@example.com")
+        services.request_payment(bill, self.a, "cash", 0, "", 1, member)
+        services.close_bill_by_staff(bill, "waiter")
+        member.refresh_from_db()
+        self.assertEqual(member.points, 97)  # 970 spent at 10 points per 100
+        with self.assertRaises(services.OrderError):
+            services.join_member(self.r, "not an email")
+
+    def test_payment_rules(self):
+        with self.assertRaises(services.OrderError):
+            services.request_payment(services.get_bill(self.table), self.a, "card", 0, "", 1)  # nothing ordered yet
+        _, bill = self.ordered()
+        for method, tip, split in [("bitcoin", 0, 1), ("cash", 99, 1), ("cash", 0, 0), ("cash", 0, 50)]:
+            with self.assertRaises(services.OrderError, msg=(method, tip, split)):
+                services.request_payment(bill, self.a, method, tip, "", split)
+        services.request_payment(bill, self.a, "cash", 0, "", 1)
+        with self.assertRaises(services.OrderError):  # the bill is being paid, so no new orders
+            services.place_order(self.table, lines(self.curry, self.naan), self.b)
+
+    def test_deal_price_needs_the_main_dish_in_the_same_order(self):
+        deal = Deal.objects.create(restaurant=self.r, dish=self.curry, partner=self.lassi, price=99)
+        with self.assertRaises(services.OrderError):
+            services.place_order(self.table, [{"dish_id": self.lassi.id, "deal_id": deal.id, "quantity": 1}])
+        with self.assertRaises(services.OrderError):  # more deal drinks than main dishes
+            services.place_order(self.table, [{"dish_id": self.curry.id, "size_id": self.curry.sizes.first().id, "quantity": 1}, {"dish_id": self.lassi.id, "deal_id": deal.id, "quantity": 2}])
+        order = services.place_order(self.table, [{"dish_id": self.curry.id, "size_id": self.curry.sizes.get(label="Half").id, "quantity": 2}, {"dish_id": self.lassi.id, "deal_id": deal.id, "quantity": 2}])
+        self.assertEqual(order.total, 2 * 300 + 2 * 99)  # not 180 each
+        self.assertEqual(Order.objects.count(), 1)
+
+    def test_review_only_after_choosing_to_pay_and_only_once(self):
+        _, bill = self.ordered()
+        guest_client = Client()
+        self.assertEqual(self.post(guest_client, f"/t/{self.table.code}/review/", {"stars": 5}).status_code, 400)  # no guest yet
+        self.post(guest_client, f"/t/{self.table.code}/join/", {"name": "Aman"})
+        self.assertEqual(self.post(guest_client, f"/t/{self.table.code}/review/", {"stars": 5}).status_code, 400)  # not paid yet
+        self.post(guest_client, f"/t/{self.table.code}/order/", {"items": lines(self.curry, self.naan)})
+        self.assertEqual(self.post(guest_client, f"/t/{self.table.code}/pay/", {"method": "cash", "tip": 0, "split": 1, "email": ""}).status_code, 200)
+        self.assertEqual(self.post(guest_client, f"/t/{self.table.code}/review/", {"stars": 9}).status_code, 400)
+        self.assertEqual(self.post(guest_client, f"/t/{self.table.code}/review/", {"stars": 4, "comment": "Lovely"}).status_code, 200)
+        self.assertEqual(self.post(guest_client, f"/t/{self.table.code}/review/", {"stars": 5}).status_code, 400)
+        self.assertEqual(Review.objects.count(), 1)
+
+    def post(self, client, path, data=None):
+        return client.post(path, json.dumps(data or {}), content_type="application/json")
+
+    def test_guests_join_by_session_and_their_orders_carry_their_name(self):
+        c = Client()
+        self.assertEqual(self.post(c, f"/t/{self.table.code}/join/", {"name": "  "}).status_code, 400)
+        self.assertEqual(self.post(c, f"/t/{self.table.code}/join/", {"name": "Riya"}).status_code, 200)
+        self.post(c, f"/t/{self.table.code}/order/", {"items": lines(self.curry, self.naan)})
+        state = c.get(f"/t/{self.table.code}/state/").json()
+        self.assertEqual(state["guest"]["name"], "Riya")
+        self.assertEqual(state["orders"][0]["guest"], "Riya")
+        self.assertEqual(Client().get(f"/t/{self.table.code}/state/").json()["guest"], None)  # another phone is not Riya
+
+    def test_quiz_scores_players_and_tables_and_each_question_counts_once(self):
+        QuizQuestion.objects.create(restaurant=self.r, text="Q1", options=["a", "b"], answer=1)
+        QuizQuestion.objects.create(restaurant=self.r, text="Q2", options=["a", "b"], answer=0)
+        q1 = services.next_question(self.a)
+        self.assertEqual(q1.text, "Q1")
+        self.assertEqual(services.answer_question(self.a, q1.id, 1), 1)
+        with self.assertRaises(services.OrderError):
+            services.answer_question(self.a, q1.id, 1)
+        self.assertEqual(services.next_question(self.a).text, "Q2")
+        services.answer_question(self.b, q1.id, 0)  # wrong
+        other = Table.objects.create(restaurant=self.r, number=2)
+        c = services.join_guest(other, "Sam")
+        services.answer_question(c, q1.id, 1)
+        board = services.leaderboard(self.r)
+        self.assertEqual([(t["table"], t["points"]) for t in board["tables"]], [(1, 10), (2, 10)])
+        self.assertEqual({p["name"] for p in board["players"]}, {"Aman", "Sam"})
+
+    def test_floor_status_follows_the_table_through_a_meal(self):
+        def status():
+            return next(t for t in services_floor() if t["n"] == 1)["status"]
+
+        from .views import floor_json
+        from django.utils import timezone
+
+        def services_floor():
+            return floor_json(self.r, timezone.now())
+
+        self.assertEqual(status(), "free")
+        order, bill = self.ordered()
+        self.assertEqual(status(), "ordering")
+        services.advance_order(order, "waiter")
+        self.assertEqual(status(), "eating")
+        services.call_waiter(self.table, "water")
+        self.assertEqual(status(), "help")
+        ServiceRequest.objects.update(status="done")
+        services.request_payment(bill, self.a, "cash", 0, "", 1)
+        self.assertEqual(status(), "bill")
+        services.close_bill_by_staff(bill, "waiter")
+        self.assertEqual(status(), "free")
+
+    def test_waiter_can_assign_a_request_and_the_response_time_is_recorded(self):
+        req = services.call_waiter(self.table, "call")
+        waiter = Client()
+        waiter.force_login(self.users["waiter"])
+        self.assertEqual(self.post(waiter, f"/staff/requests/{req.id}/assign/", {"user_id": self.users["waiter"].id}).status_code, 200)
+        self.assertEqual(self.post(waiter, f"/staff/requests/{req.id}/ack/").status_code, 200)
+        data = waiter.get("/staff/data/").json()
+        self.assertEqual(data["requests"][0]["assigned_id"], self.users["waiter"].id)
+        self.assertIsNotNone(data["requests"][0]["response"])
+        other = make_restaurant("B")[4]["waiter"]
+        self.assertEqual(self.post(waiter, f"/staff/requests/{req.id}/assign/", {"user_id": other.id}).status_code, 404)  # not this restaurant's staff
+
+    def test_staff_confirm_payment_over_http_and_only_in_their_own_restaurant(self):
+        _, bill = self.ordered()
+        services.request_payment(bill, self.a, "cash", 0, "", 1)
+        pay = Payment.objects.get()
+        stranger = Client()
+        stranger.force_login(make_restaurant("B")[4]["waiter"])
+        self.assertEqual(self.post(stranger, f"/staff/payments/{pay.id}/paid/").status_code, 404)
+        waiter = Client()
+        waiter.force_login(self.users["waiter"])
+        self.assertEqual(waiter.get("/staff/data/").json()["payments"][0]["amount"], "970.00")
+        self.assertEqual(self.post(waiter, f"/staff/payments/{pay.id}/paid/").status_code, 200)
+        bill.refresh_from_db()
+        self.assertEqual(bill.status, Bill.PAID)
+
+    def test_owner_overview_is_for_the_owner_and_counts_tonights_sales(self):
+        _, bill = self.ordered()
+        services.request_payment(bill, self.a, "cash", 0, "", 1)
+        services.close_bill_by_staff(bill, "waiter")
+        Review.objects.create(bill=bill, guest=self.a, stars=4, comment="Good")
+        waiter, owner = Client(), Client()
+        waiter.force_login(self.users["waiter"])
+        owner.force_login(self.users["owner"])
+        self.assertEqual(waiter.get("/owner/data/").status_code, 403)
+        self.assertEqual(waiter.get("/owner/").status_code, 403)
+        d = owner.get("/owner/data/").json()
+        self.assertEqual((d["sales_today"], d["orders_today"], d["rating"], d["review_count"]), ("970.00", 1, 4.0, 1))
+        self.assertEqual(d["best"][0]["qty"], 3)
+        self.assertEqual(owner.get("/owner/").status_code, 200)

@@ -5,58 +5,98 @@
   <div class="topbar" style="position: relative; z-index: 1">
     <div class="logo">{{ restaurant.initials }}</div>
     <div><h1 class="d">{{ restaurant.name }}</h1><div class="muted sm" style="margin-top: 3px">Service desk</div></div>
-    <nav>
-      {% if role == "owner" %}<a class="chip" href="{% url 'kitchen' %}">Kitchen</a><a class="chip" href="{% url 'qr' %}">QR codes</a><a class="chip" href="/admin/">Menu and tables</a>{% endif %}
-    </nav>
+    <nav id="tabs"></nav>
     <span class="grow"></span>
+    {% if role == "owner" %}<nav><a class="chip sm" href="{% url 'owner' %}">Overview</a><a class="chip sm" href="{% url 'kitchen' %}">Kitchen</a><a class="chip sm" href="{% url 'qr' %}">QR codes</a><a class="chip sm" href="/admin/">Menu and tables</a></nav>{% endif %}
     <span class="row" style="gap: 8px; font-weight: 700; font-size: 13px"><span class="livedot"></span>Live</span>
     <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
   </div>
 </header>
-<main class="page" style="padding-top: 24px"><div class="board" id="board"></div></main>
+<main class="page" style="padding-top: 24px" id="main"></main>
 {% endblock %}
 {% block script %}
 <script>
 const $ = (s) => document.querySelector(s);
-let first = true;
+const S = { tab: 'orders', sel: null, data: null, first: true };
+const anim = (n) => (S.first ? `animation-delay:${n * 60}ms` : 'animation:none');
 
 const lines = (o) => h('ul', {}, o.items.map((i) => h('li', {}, plate(i.art, i.name, 40, 'flat'),
-  h('span', { class: 'grow' }, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : ''),
+  h('span', { class: 'grow' }, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : ''), i.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null,
     i.note ? h('span', { class: 'tag al', style: 'display:block;margin-top:3px;width:fit-content' }, 'Note: ' + i.note) : null),
   h('span', { class: 'muted sm' }, i.station))));
 
 function orderCard(o, n) {
-  const cls = o.status === 'placed' ? ' new' : '';
-  return h('div', { class: 'ticket' + cls, style: first ? `animation-delay:${n * 60}ms` : 'animation:none' },
-    h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + o.table), h('span', { class: 'muted sm' }, '#' + o.id + ' · ' + ago(o.seconds_old))),
+  return h('div', { class: 'ticket' + (o.status === 'placed' ? ' new' : ''), style: anim(n) },
+    h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + o.table), h('span', { class: 'muted sm' }, (o.guest ? o.guest + ' · ' : '') + '#' + o.id + ' · ' + ago(o.seconds_old))),
     lines(o),
     o.status === 'cooking' && o.seconds_left !== null ? h('div', { class: 'muted sm' }, 'About ', h('b', { class: 'timer', style: 'color:var(--fg)' }, countdown(o.seconds_left)), ' left') : null,
     o.action ? h('button', { class: 'btn', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/orders/' + o.id + '/advance/', {}), refresh); } }, o.action) : null);
 }
+function assignSelect(req) {
+  return h('select', { 'aria-label': 'Assign to', style: 'padding:8px 10px;border-radius:12px', onchange: (e) => act(() => api('/staff/requests/' + req.id + '/assign/', { user_id: +e.target.value }), refresh) },
+    h('option', { value: '' }, 'Unassigned'), S.data.team.map((u) => h('option', { value: u.id, selected: u.id === req.assigned_id }, u.name)));
+}
 function requestCard(r, n) {
-  return h('div', { class: 'ticket req', style: first ? `animation-delay:${n * 60}ms` : 'animation:none' },
+  return h('div', { class: 'ticket req', style: anim(n) },
     h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + r.table), h('span', { class: 'muted sm' }, ago(r.seconds_old))),
-    h('div', { class: 'row' }, h('span', { class: 'bb' }, r.label), h('span', { class: 'st ' + (r.status === 'open' ? 'help' : 'eating') }, r.status_label)),
-    h('div', { class: 'row' },
+    h('div', { class: 'row' }, h('span', { class: 'bb' }, r.label), h('span', { class: 'st ' + (r.status === 'open' ? 'help' : 'eating') }, r.status_label), r.response !== null ? h('span', { class: 'tag em' }, 'Answered in ' + r.response + ' s') : null),
+    h('div', { class: 'row', style: 'flex-wrap:wrap' }, assignSelect(r), h('span', { class: 'grow' }),
       r.status === 'open' ? h('button', { class: 'btn ghost sm', onclick: () => act(() => api('/staff/requests/' + r.id + '/ack/', {}), refresh) }, 'On my way') : null,
-      h('span', { class: 'grow' }), h('button', { class: 'btn sm', onclick: () => act(() => api('/staff/requests/' + r.id + '/done/', {}), refresh) }, 'Done')));
+      h('button', { class: 'btn sm', onclick: () => act(() => api('/staff/requests/' + r.id + '/done/', {}), refresh) }, 'Done')));
+}
+function paymentCard(p, n) {
+  return h('div', { class: 'ticket', style: anim(n) + ';border-left-color:var(--saf)' },
+    h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + p.table), h('span', { class: 'st bill' }, p.method_label)),
+    h('div', { class: 'spread' }, h('span', {}, p.guest), h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:#ffcb62' }, money(S.data.currency, p.amount))),
+    p.tip !== '0.00' ? h('span', { class: 'muted sm' }, 'includes ' + money(S.data.currency, p.tip) + ' tip') : null,
+    p.email ? h('span', { class: 'muted sm' }, 'Invoice to ' + p.email) : null,
+    h('button', { class: 'btn', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/payments/' + p.id + '/paid/', {}), refresh); } }, 'Payment received'));
 }
 function column(title, cards, emptyText) {
-  return h('div', { class: 'col3' }, h('div', { class: 'spread' }, h('h2', { class: 'd', style: 'font-size:22px;font-weight:700' }, title), h('span', { class: 'pill' }, cards.length)),
-    cards.length ? cards : h('div', { class: 'empty' }, emptyText));
+  return h('div', { class: 'col3' }, h('div', { class: 'spread' }, h('h2', { class: 'd', style: 'font-size:22px;font-weight:700' }, title), h('span', { class: 'pill' }, cards.length)), cards.length ? cards : h('div', { class: 'empty' }, emptyText));
 }
 
-async function refresh() {
-  const d = await api('/staff/data/');
-  const by = (s) => d.orders.filter((o) => o.status === s).map(orderCard);
-  $('#board').replaceChildren(
+function ordersTab() {
+  const d = S.data, by = (s) => d.orders.filter((o) => o.status === s).map(orderCard);
+  return h('div', { class: 'board' },
     column('Requests', d.requests.map(requestCard), 'No one is asking for anything.'),
     column('New orders', by('placed'), 'No new orders.'),
     column('In the kitchen', by('cooking'), 'Nothing cooking.'),
-    column('Ready to serve', by('ready'), 'Nothing waiting.'));
-  first = false;
+    column('Ready to serve', by('ready'), 'Nothing waiting.'),
+    column('Payments', d.payments.map(paymentCard), 'No one is paying right now.'));
 }
+
+function floorTab() {
+  const d = S.data, t = d.tables.find((x) => x.n === S.sel) || d.tables.find((x) => x.status !== 'free') || d.tables[0];
+  if (!t) return h('div', { class: 'empty' }, 'No tables yet.');
+  const map = h('div', { class: 'floormap' }, d.tables.map((x) => h('button', { class: 'disc ' + x.status + (x.round ? ' round' : '') + (x.n === t.n ? ' sel' : ''), style: `left:${x.x}%;top:${x.y}%`, 'aria-label': 'Table ' + x.n + ', ' + x.status, onclick: () => { S.sel = x.n; render(); } }, 'T' + x.n, h('small', {}, x.status))),
+    h('span', { class: 'muted sm b', style: 'position:absolute;left:20px;bottom:14px' }, 'Entrance'), h('span', { class: 'muted sm b', style: 'position:absolute;right:20px;bottom:14px' }, 'Kitchen'));
+  const side = h('div', { class: 'col', style: 'gap:12px' }, h('div', { class: 'card pop', style: 'gap:14px;padding:20px;box-shadow:var(--shadow-m)' },
+    h('div', { class: 'spread' }, h('h2', { class: 'd', style: 'font-size:28px;font-weight:700' }, 'Table ' + t.n), h('span', { class: 'st ' + t.status }, t.status)),
+    h('div', { class: 'col', style: 'gap:3px' }, h('span', { class: 'muted sm b' }, 'At the table'), h('span', {}, t.guests.length ? t.guests.join(', ') : 'Nobody has joined')),
+    h('div', { class: 'col', style: 'gap:3px' }, h('span', { class: 'muted sm b' }, 'Ordered'), h('span', {}, t.bill ? t.bill.items.join(', ') : 'Nothing yet')),
+    t.requests.length ? h('div', { class: 'col', style: 'gap:8px' }, h('span', { class: 'muted sm b' }, 'Requests'), t.requests.map((q) => h('div', { class: 'spread' }, h('span', {}, h('b', {}, q.label), ' · ', ago(q.seconds_old)), h('span', { class: 'st ' + (q.status === 'open' ? 'help' : 'eating') }, q.assigned || (q.status === 'open' ? 'Open' : 'On the way'))))) : null,
+    t.bill ? h('div', { class: 'spread', style: 'padding-top:10px;border-top:1.5px dashed var(--line)' }, h('span', { class: 'muted' }, 'Bill total'), h('span', { class: 'd num', style: 'font-size:24px;font-weight:700' }, money(S.data.currency, t.bill.total))) : null,
+    t.bill && t.bill.payments.length ? t.bill.payments.map((p) => h('div', { class: 'spread' }, h('span', {}, p.guest + ' · ' + p.method_label), h('span', { class: 'row', style: 'gap:8px' }, h('span', { class: 'num b' }, money(S.data.currency, p.amount)), p.status === 'paid' ? h('span', { class: 'st eating' }, 'Paid') : h('button', { class: 'btn sm', onclick: () => act(() => api('/staff/payments/' + p.id + '/paid/', {}), refresh) }, 'Received')))) : null),
+    t.bill ? h('button', { class: 'btn ghost wide', onclick: () => act(() => api('/staff/bills/' + t.bill.id + '/close/', {}), refresh) }, 'Close the bill and free the table') : null);
+  return h('div', { style: 'display:grid;grid-template-columns:minmax(0,1.6fr) minmax(300px,1fr);gap:22px;align-items:start' }, map, side);
+}
+
+function render() {
+  if (!S.data) return;
+  const tabs = [['orders', 'Orders'], ['floor', 'Floor map']];
+  $('#tabs').replaceChildren(...tabs.map(([k, l]) => h('button', { class: 'chip' + (S.tab === k ? ' on' : ''), onclick: () => { S.tab = k; render(); } }, l)));
+  const keep = window.scrollY;
+  $('#main').replaceChildren(S.tab === 'floor' ? floorTab() : ordersTab());
+  window.scrollTo({ top: keep });
+  S.first = false;
+}
+async function refresh() { S.data = await api('/staff/data/'); render(); }
 
 live('/ws/staff/', refresh);
 </script>
+<style>
+.floormap { position: relative; min-height: 460px; height: 100%; border-radius: 30px; background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-s); background-image: radial-gradient(#33261d 1.2px, transparent 1.2px); background-size: 22px 22px; }
+@media (max-width: 800px) { .floormap { min-height: 380px; } }
+</style>
 {% endblock %}

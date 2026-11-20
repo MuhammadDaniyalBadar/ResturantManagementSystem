@@ -138,3 +138,17 @@ label.f { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font
 .qrgrid svg { width: 100%; height: auto; max-width: 190px; border-radius: 14px; }
 .login { max-width: 400px; margin: 0 auto; padding: 14vh 20px 0; }
 @media print { body { background: #fff !important; color: #000; } .topbar, .noprint { display: none !important; } .card { background: #fff; border-color: #ccc; box-shadow: none; } .muted { color: #555; } }
+
+/* floor map, owner overview, review stars */
+@keyframes growx { from { transform: scaleX(0); } to { transform: none; } }
+.disc { position: absolute; width: 82px; height: 82px; transform: translate(-50%, -50%); border-radius: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-family: var(--font-d); font-weight: 800; font-size: 20px; border: 2px solid var(--line); background: var(--s2); color: var(--fg); line-height: 1.1; box-shadow: var(--shadow-s); transition: transform .25s var(--ease), box-shadow .25s; }
+.disc:hover { transform: translate(-50%, -50%) scale(1.08); box-shadow: var(--shadow-m); }
+.disc small { font-family: var(--font-b); font-weight: 700; font-size: 11px; } .disc.round { border-radius: 50%; }
+.disc.eating { background: var(--mint-s); border-color: var(--mint); color: var(--mint); } .disc.ordering { background: var(--sky-s); border-color: var(--sky); color: var(--sky); }
+.disc.bill { background: var(--saf-s); border-color: var(--saf); color: var(--saf); } .disc.help { background: var(--chi-s); border-color: var(--chi); color: #ff8a7e; animation: pulse-red 1.8s infinite; }
+.disc.sel { outline: 3px solid var(--fg); outline-offset: 4px; }
+.kpi { border: 1px solid var(--line); border-radius: 24px; padding: 20px; display: flex; flex-direction: column; gap: 4px; background: linear-gradient(180deg, var(--s2), var(--s1)); box-shadow: var(--shadow-s); position: relative; overflow: hidden; animation: rise .55s var(--ease) both; animation-delay: calc(var(--i, 0) * 80ms); }
+.kpi::after { content: ""; position: absolute; right: -30px; top: -30px; width: 110px; height: 110px; border-radius: 50%; background: radial-gradient(circle, rgba(255, 176, 32, .2), transparent 70%); pointer-events: none; }
+.kpi b { font-family: var(--font-d); font-size: 38px; font-weight: 700; letter-spacing: -.03em; font-variant-numeric: tabular-nums; }
+.hbar { height: 12px; border-radius: 6px; background: linear-gradient(90deg, #ffc247, #ff8a1f); transform-origin: left; animation: growx .9s var(--ease) both; animation-delay: calc(var(--i, 0) * 90ms); }
+.stars button { color: #5a4636; transition: transform .2s var(--ease), color .2s; } .stars button.on { color: var(--saf); transform: scale(1.12); filter: drop-shadow(0 0 8px rgba(255, 176, 32, .5)); }

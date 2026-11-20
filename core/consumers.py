@@ -5,19 +5,20 @@ from .models import Table
 
 
 class _Live(AsyncWebsocketConsumer):
-    group = None
+    groups_joined = ()
 
     async def connect(self):
-        self.group = await self.find_group()
-        if self.group is None:
+        self.groups_joined = await self.find_groups()
+        if not self.groups_joined:
             await self.close()
             return
-        await self.channel_layer.group_add(self.group, self.channel_name)
+        for g in self.groups_joined:
+            await self.channel_layer.group_add(g, self.channel_name)
         await self.accept()
 
     async def disconnect(self, code):
-        if self.group:
-            await self.channel_layer.group_discard(self.group, self.channel_name)
+        for g in self.groups_joined:
+            await self.channel_layer.group_discard(g, self.channel_name)
 
     async def changed(self, event):
         # The message carries no data: the screen fetches fresh state from the server.
@@ -27,12 +28,12 @@ class _Live(AsyncWebsocketConsumer):
 class StaffConsumer(_Live):
     """Staff and kitchen screens: one group per restaurant, login required."""
 
-    async def find_group(self):
+    async def find_groups(self):
         user = self.scope.get("user")
         if user is None or not user.is_authenticated:
-            return None
+            return ()
         rid = await self._restaurant_id(user)
-        return f"rest-{rid}" if rid else None
+        return (f"rest-{rid}",) if rid else ()
 
     @database_sync_to_async
     def _restaurant_id(self, user):
@@ -41,12 +42,12 @@ class StaffConsumer(_Live):
 
 
 class GuestConsumer(_Live):
-    """Guest page: one group per table, found by the table's random code."""
+    """Guest page: a group for the table, found by its random code, and one for the restaurant's quiz."""
 
-    async def find_group(self):
-        tid = await self._table_id(self.scope["url_route"]["kwargs"]["code"])
-        return f"table-{tid}" if tid else None
+    async def find_groups(self):
+        found = await self._table(self.scope["url_route"]["kwargs"]["code"])
+        return (f"table-{found[0]}", f"quiz-{found[1]}") if found else ()
 
     @database_sync_to_async
-    def _table_id(self, code):
-        return Table.objects.filter(code=code).values_list("pk", flat=True).first()
+    def _table(self, code):
+        return Table.objects.filter(code=code).values_list("pk", "restaurant_id").first()

@@ -20,9 +20,25 @@ Open http://127.0.0.1:8000 . Logins (password `demo1234`, or `$DEMO_PASSWORD`):
 | --- | --- | --- |
 | `owner` | `/staff/`, `/kitchen/`, `/staff/qr/`, `/admin/` | everything, edits menu and tables in the admin |
 | `waiter` | `/staff/` | confirm orders, serve, answer requests |
+| `sara` | `/staff/` | a second waiter, for assigning requests |
 | `kitchen` | `/kitchen/` | mark dishes ready by station |
 
 Guests need no login. Each table's link is printed by `seed_demo` and shown, with a QR code, at `/staff/qr/`.
+
+## What it does now
+
+1. **Scan and order.** Each table has its own QR code. Guests give their name, so two people at one table share one order list and one bill. The menu shows spice level, allergens, sizes and deals (for example a lassi for Rs 99 with a curry).
+2. **Staff and kitchen.** The waiter sends the order to the kitchen with one tap. The kitchen board shows live timers by station and turns red past the dish's prep time.
+3. **While they wait.** Guests see a countdown, the restaurant WiFi password with a copy button, reward points (they join with an email to keep them) and a Spice Quiz where tables compete live.
+4. **Call the waiter.** Water, napkins, bill or a waiter. The waiter can assign it and the guest sees who is coming and how fast they answered.
+5. **Live floor map.** Every table's status (free, ordering, eating, bill, help), who is sitting there and what they ordered.
+6. **Bill.** Itemised, with service charge and tax, split between guests, a tip, and a payment choice: cash, bank transfer, card, Apple Pay or Google Pay. The waiter confirms at the table. No money moves through the app.
+7. **Invoice and review.** The invoice is emailed, reward points are added, and the guest can leave a star review.
+8. **Owner overview** at `/owner/`: tables in use, orders and sales today, sales by day, peak hours, best sellers, live floor and reviews.
+
+Set the restaurant's WiFi, service charge, tax and reward in the admin (Restaurants). Invoices print in the server terminal until you set `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and `DEFAULT_FROM_EMAIL`.
+
+If you ran an older version, delete `db.sqlite3`, then run `migrate` and `seed_demo` again.
 
 ## Look and feel
 

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Overview · {{ restaurant.name }}{% endblock %}
+{% block body %}
+<header class="hero">
+  <div class="topbar" style="position: relative; z-index: 1">
+    <div class="logo">{{ restaurant.initials }}</div>
+    <div><h1 class="d">Tonight</h1><div class="muted sm" style="margin-top: 3px">{{ restaurant.name }} · everything live</div></div>
+    <nav><a class="chip sm" href="{% url 'staff' %}">Service desk</a><a class="chip sm" href="{% url 'kitchen' %}">Kitchen</a><a class="chip sm" href="{% url 'qr' %}">QR codes</a><a class="chip sm" href="/admin/">Menu and tables</a></nav>
+    <span class="grow"></span>
+    <span class="row" style="gap: 8px; font-weight: 700; font-size: 13px"><span class="livedot"></span>Live</span>
+    <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
+  </div>
+</header>
+<main class="page" style="padding-top: 24px" id="main"></main>
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+let first = true;
+const rise = (i) => (first ? { class: 'rise', style: `--i:${i}` } : {});
+const A = (c, i) => ({ class: (first ? 'rise ' : '') + c, style: first ? `--i:${i}` : '' });
+
+const kpi = (label, value, i) => h('div', { class: 'kpi', style: first ? `--i:${i}` : 'animation:none' }, h('span', { class: 'muted sm b' }, label), h('b', {}, value));
+const card = (title, sub, i, ...kids) => h('section', { ...A('card', i), style: (first ? `--i:${i};` : '') + 'padding:20px;gap:12px' },
+  h('h2', { class: 'd', style: 'font-size:20px;font-weight:700' }, title, sub ? h('span', { class: 'muted sm', style: 'font-family:var(--font-b);font-weight:600;margin-left:8px' }, sub) : null), kids);
+
+function bars(days) {
+  const W = 320, H = 150, max = Math.max(1, ...days.map((d) => d.sales)), bw = (W - 24) / days.length, hi = days.reduce((b, d, i, a) => (d.sales > a[b].sales ? i : b), 0);
+  const parts = days.map((d, i) => {
+    const hgt = Math.max(2, (H - 44) * d.sales / max), x = 12 + i * bw + bw * .16, cx = x + bw * .34;
+    return `<rect x="${x.toFixed(1)}" y="${(H - 24 - hgt).toFixed(1)}" width="${(bw * .68).toFixed(1)}" height="${hgt.toFixed(1)}" rx="5" fill="${i === hi && d.sales ? 'url(#gb)' : '#4a3a30'}"/>`
+      + (d.sales ? `<text x="${cx.toFixed(1)}" y="${(H - 28 - hgt).toFixed(1)}" font-size="10" font-weight="700" fill="#fff4e8" text-anchor="middle">${Math.round(d.sales)}</text>` : '')
+      + `<text x="${cx.toFixed(1)}" y="${H - 8}" font-size="10" fill="#c4ae9e" text-anchor="middle">${d.label}</text>`;
+  }).join('');
+  return svg(`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Sales for each of the last seven days" style="display:block"><defs><linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffc247"/><stop offset="1" stop-color="#ff8a1f"/></linearGradient></defs>${parts}</svg>`);
+}
+function area(hours) {
+  const W = 320, H = 150, max = Math.max(1, ...hours.map((x) => x.orders)), step = (W - 28) / (hours.length - 1);
+  const pts = hours.map((x, i) => [14 + i * step, H - 26 - (H - 50) * x.orders / max]), pk = hours.reduce((b, x, i, a) => (x.orders > a[b].orders ? i : b), 0);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const labels = hours.map((x, i) => (i % 2 === 0 ? `<text x="${pts[i][0].toFixed(1)}" y="${H - 8}" font-size="10" fill="#c4ae9e" text-anchor="middle">${x.hour}</text>` : '')).join('');
+  return svg(`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Orders per hour over the last seven days" style="display:block"><defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffb020" stop-opacity=".35"/><stop offset="1" stop-color="#ffb020" stop-opacity="0"/></linearGradient></defs>`
+    + `<path d="${line} L${pts.at(-1)[0].toFixed(1)} ${H - 26} L14 ${H - 26}Z" fill="url(#ga)"/><path d="${line}" fill="none" stroke="#ffb020" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`
+    + (max > 1 || hours[pk].orders ? `<circle cx="${pts[pk][0].toFixed(1)}" cy="${pts[pk][1].toFixed(1)}" r="4.5" fill="#ffb020"/><text x="${pts[pk][0].toFixed(1)}" y="${(pts[pk][1] - 9).toFixed(1)}" font-size="10" font-weight="700" fill="#fff4e8" text-anchor="middle">${hours[pk].orders}</text>` : '') + labels + '</svg>');
+}
+const mins = (s) => (s === null ? '–' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
+const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
+
+function render(d) {
+  const cur = d.currency, best = d.best, top = Math.max(1, ...best.map((b) => b.qty));
+  const live = d.tables.map((t) => h('div', { class: 'row', style: 'gap:10px' }, h('span', { class: 'bb', style: 'min-width:34px' }, 'T' + t.n), h('span', { class: 'st ' + t.status }, t.status), h('span', { class: 'muted sm grow', style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, t.guests.length ? t.guests.join(', ') : ''), t.bill ? h('span', { class: 'num b' }, money(cur, t.bill.total)) : null));
+  $('#main').replaceChildren(
+    h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px' },
+      kpi('Tables in use', d.tables_in_use + ' / ' + d.tables_total, 0), kpi('Orders today', d.orders_today, 1), kpi('Sales today', money(cur, d.sales_today), 2), kpi('Average prep time', mins(d.avg_prep), 3)),
+    h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-top:18px' },
+      card('Sales by day', cur, 3, bars(d.days)),
+      card('Peak hours', 'orders per hour', 4, area(d.hours)),
+      card('Best sellers this week', '', 5, best.length ? h('div', { style: 'display:grid;grid-template-columns:44px minmax(0,1fr) 36px;gap:10px 12px;align-items:center' }, best.map((b, i) => [
+        plate(b.art, b.name, 40, 'flat'), h('div', { class: 'col', style: 'gap:4px' }, h('span', { class: 'b' }, b.name), h('div', { class: 'hbar', style: `width:${b.qty / top * 100}%;${first ? `--i:${i}` : 'animation:none'}` })), h('span', { class: 'num bb', style: 'text-align:right' }, b.qty)])) : h('div', { class: 'empty' }, 'No orders yet this week.')),
+      card('Live floor', '', 6, h('div', { class: 'col', style: 'gap:10px' }, live)),
+      card('Guest reviews', d.rating ? d.rating + ' average · ' + d.review_count + (d.review_count === 1 ? ' review' : ' reviews') : '', 7, d.reviews.length ? d.reviews.map((r) => h('div', { class: 'col', style: 'gap:2px;padding:8px 0;border-bottom:1px solid var(--line)' }, h('div', { class: 'spread' }, h('span', { style: 'color:#ffb020;letter-spacing:2px', 'aria-label': r.stars + ' out of 5' }, stars(r.stars)), h('span', { class: 'muted sm' }, r.guest + ' · Table ' + r.table + ' · ' + ago(r.age))), r.comment ? h('span', {}, r.comment) : null)) : h('div', { class: 'empty' }, 'No reviews yet.'))));
+  first = false;
+}
+async function refresh() { render(await api('/owner/data/')); }
+live('/ws/staff/', refresh, 15000);
+</script>
+{% endblock %}

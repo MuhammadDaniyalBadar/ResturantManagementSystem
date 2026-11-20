@@ -18,35 +18,58 @@ const DISHES = MENU.categories.flatMap((c) => c.dishes.map((d) => ({ ...d, cat: 
 const byId = Object.fromEntries(DISHES.map((d) => [d.id, d]));
 const SPICE = { Mild: 1, Medium: 2, Hot: 3 };
 const STEPS = ['placed', 'cooking', 'ready', 'served'];
+const METHODS = [['cash', 'Cash', 'cash'], ['bank', 'Bank transfer', 'bank'], ['card', 'Card', 'card'], ['apple', 'Apple Pay', 'phone'], ['google', 'Google Pay', 'phone']];
 const url = (p) => `/t/${CODE}/${p}`;
 const root = $('#app');
-const S = { view: 'menu', cat: 'All', avoid: {}, sheet: null, cart: [], orders: [], requests: [], anim: true, sheetIn: false };
+const S = {
+  view: 'menu', cat: 'All', avoid: {}, sheet: null, cart: [], orders: [], requests: [], guest: null, guests: [], wifi: null, reward: null,
+  bill: null, payments: [], paid: null, anim: true, sheetIn: false, askName: false, nameAsked: false,
+  pay: { method: 'card', tip: 10, split: null, email: '' }, quiz: null, qAns: null, stars: 0, reviewed: false, comment: '',
+};
 
 const initials = (n) => n.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
 const lowest = (d) => (d.sizes.length ? Math.min(...d.sizes.map((s) => +s.price)) : +d.price);
-const unit = (l) => { const d = byId[l.id]; const z = l.size ? d.sizes.find((s) => String(s.id) === String(l.size)) : null; return z ? +z.price : +d.price; };
-const sizeLabel = (l) => { const d = byId[l.id]; const z = l.size ? d.sizes.find((s) => String(s.id) === String(l.size)) : null; return z ? z.label : ''; };
+const sizeOf = (l) => (l.size ? byId[l.id].sizes.find((s) => String(s.id) === String(l.size)) : null);
+const unit = (l) => (l.deal ? +l.deal.price : sizeOf(l) ? +sizeOf(l).price : +byId[l.id].price);
+const sizeLabel = (l) => (l.deal ? 'Deal price' : sizeOf(l) ? sizeOf(l).label : '');
 const count = () => S.cart.reduce((n, l) => n + l.qty, 0);
 const sub = () => S.cart.reduce((t, l) => t + unit(l) * l.qty, 0);
-const rise = (i = 0) => (S.anim ? { class: 'rise', style: `--i:${i}` } : {});
 const A = (extra) => (S.anim ? 'rise ' : '') + (extra || '');
+const same = (l, id, size, deal) => l.id === id && String(l.size) === String(size) && (l.deal ? l.deal.id : 0) === (deal ? deal.id : 0);
 
-function go(view) { S.view = view; S.sheet = null; S.anim = true; render(); }
-function addLine(d, size, qty) {
-  const hit = S.cart.find((l) => l.id === d.id && String(l.size) === String(size));
-  if (hit) hit.qty += qty; else S.cart.push({ id: d.id, size, qty, note: '' });
+function go(view) { S.view = view; S.sheet = null; S.anim = true; render(); if (view === 'quiz') loadQuiz().then(render); }
+function addLine(d, size, qty, deal) {
+  const hit = S.cart.find((l) => same(l, d.id, size, deal));
+  if (hit) hit.qty += qty; else S.cart.push({ id: d.id, size, qty, note: '', deal: deal || null });
+}
+function addDeal(main, deal) {
+  const partner = byId[deal.partner_id];
+  if (!S.cart.some((l) => l.id === main.id && !l.deal)) addLine(main, main.sizes.length ? main.sizes[0].id : '', 1);
+  addLine(partner, '', 1, { id: deal.id, price: deal.price, main: main.id });
+}
+function changeQty(l, by) {
+  l.qty += by;
+  S.cart = S.cart.filter((x) => x.qty > 0);
+  S.cart.filter((x) => x.deal).forEach((x) => { // a deal drink needs its main dish
+    const mains = S.cart.filter((m) => m.id === x.deal.main && !m.deal).reduce((n, m) => n + m.qty, 0);
+    x.qty = Math.min(x.qty, mains);
+  });
+  S.cart = S.cart.filter((x) => x.qty > 0);
 }
 function quick(d) { addLine(d, d.sizes.length ? d.sizes[0].id : '', 1); toast(d.name + ' added'); render(); }
 function openDish(d) { S.sheet = { d, size: d.sizes.length ? d.sizes[0].id : '', qty: 1 }; S.sheetIn = true; render(); }
 const leftOf = (o) => (o.endsAt ? Math.max(0, Math.round((o.endsAt - Date.now()) / 1000)) : null);
-const focusStatus = () => S.orders.find((o) => o.status === 'cooking') || S.orders[0];
-const statusWord = () => { const o = focusStatus(); return { placed: 'Placed', cooking: 'Cooking', ready: 'Ready' }[o.status] || o.label; };
+const live_orders = () => S.orders.filter((o) => o.status !== 'served');
+const focusStatus = () => live_orders().find((o) => o.status === 'cooking') || live_orders()[0] || S.orders[0];
+const statusWord = () => { const o = focusStatus(); return { placed: 'Placed', cooking: 'Cooking', ready: 'Ready', served: 'Served' }[o.status] || o.label; };
+const copyText = async (t) => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch (e) { toast('Select and copy it by hand', true); } };
 
 /* ---------- pieces ---------- */
 function topbar() {
   return h('div', { class: 'row', style: 'padding:24px 18px 6px;gap:12px;flex:none' },
     h('div', { class: 'logo' }, initials(RNAME)),
-    h('div', { class: 'grow' }, h('div', { class: 'bb', style: 'font-size:16px;line-height:1.1' }, RNAME), h('div', { class: 'muted sm' }, 'Table ' + TNUM + ' · Dine-in')),
+    h('div', { class: 'grow' }, h('div', { class: 'bb', style: 'font-size:16px;line-height:1.1' }, RNAME),
+      h('div', { class: 'muted sm' }, 'Table ' + TNUM + ' · ' + (S.guests.length ? S.guests.join(', ') : 'Dine-in'))),
     S.orders.length ? h('button', { class: 'chip on sm', onclick: () => go('status') }, h('span', { class: 'livedot', style: 'width:8px;height:8px' }), statusWord()) : null,
     h('button', { class: 'iconbtn glass', 'aria-label': 'Call the waiter', onclick: () => go('call') }, icon('bell', 22, 1.9)));
 }
@@ -81,30 +104,48 @@ function floatbar() {
     h('span', { class: 'col', style: 'gap:0' }, h('span', { class: 'sm muted' }, count() + (count() === 1 ? ' item' : ' items')), h('span', { class: 'd', style: 'font-size:23px;font-weight:700' }, money(CUR, sub()))),
     h('button', { class: 'btn', onclick: () => go('cart') }, 'View order'));
 }
+function shell(inner) {
+  const inn = S.sheetIn ? ' in' : '';
+  return [h('button', { class: 'shade' + inn, 'aria-label': 'Close', onclick: () => { S.sheet = null; S.askName = false; render(); } }), h('div', { class: 'sheet' + inn }, h('div', { class: 'grab' }), inner)];
+}
 function sheet() {
   if (!S.sheet) return null;
   const { d } = S.sheet, z = d.sizes.find((s) => String(s.id) === String(S.sheet.size)), price = z ? +z.price : +d.price;
-  const pairs = DISHES.filter((x) => x.id !== d.id && x.cat !== d.cat && !x.sizes.length).slice(0, 2);
-  const inn = S.sheetIn ? ' in' : '';
-  return [
-    h('button', { class: 'shade' + inn, 'aria-label': 'Close', onclick: () => { S.sheet = null; render(); } }),
-    h('div', { class: 'sheet' + inn },
-      h('div', { class: 'grab' }),
-      h('div', { style: 'position:relative;display:flex;justify-content:center;padding:8px 0 2px' },
-        h('div', { style: 'position:absolute;top:14px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,176,32,.32),transparent 68%)' }),
-        h('div', { class: 'floaty', style: 'position:relative' }, plate(d.art, d.name, 200))),
-      h('div', { class: 'spread', style: 'align-items:flex-start' },
-        h('h2', { class: 'd', style: 'font-size:31px;line-height:1.02;font-weight:700' }, d.name),
-        SPICE[d.spice] ? h('span', { class: 'flames', 'aria-label': d.spice + ' spice' }, [1, 2, 3].map((n) => h('span', { class: n <= SPICE[d.spice] ? 'on' : '' }, flame()))) : null),
-      h('p', { class: 'muted' }, d.description),
-      h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, d.allergens.map((a) => h('span', { class: 'tag al' }, a))),
-      d.sizes.length ? h('div', { class: 'seg' }, d.sizes.map((s) => h('button', { class: String(S.sheet.size) === String(s.id) ? 'on' : '', onclick: () => { S.sheet.size = s.id; render(); } }, s.label + ' · ' + money(CUR, s.price)))) : null,
-      pairs.length ? h('div', { class: 'card flat', style: 'gap:12px;padding:14px' }, h('span', { class: 'bb' }, 'Goes well with'),
-        pairs.map((x) => h('div', { class: 'row', style: 'gap:12px' }, plate(x.art, x.name, 46, 'flat'), h('span', { class: 'grow' }, x.name + ' ', h('span', { class: 'muted' }, '+' + money(CUR, x.price))), h('button', { class: 'btn ghost sm', onclick: () => { addLine(x, '', 1); toast(x.name + ' added'); render(); } }, 'Add')))) : null,
-      h('div', { class: 'row', style: 'gap:12px' },
-        h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { S.sheet.qty = Math.max(1, S.sheet.qty - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, S.sheet.qty), h('button', { 'aria-label': 'More', onclick: () => { S.sheet.qty += 1; render(); } }, icon('plus', 16, 2.4))),
-        h('button', { class: 'btn grow', onclick: () => { addLine(d, S.sheet.size, S.sheet.qty); S.sheet = null; toast(d.name + ' added'); render(); } }, 'Add to order · ' + money(CUR, price * S.sheet.qty)))),
-  ];
+  const pairs = DISHES.filter((x) => x.id !== d.id && x.cat !== d.cat && !x.sizes.length && !d.deals.some((e) => e.partner_id === x.id)).slice(0, 2);
+  return shell([
+    h('div', { style: 'position:relative;display:flex;justify-content:center;padding:8px 0 2px' },
+      h('div', { style: 'position:absolute;top:14px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,176,32,.32),transparent 68%)' }),
+      h('div', { class: 'floaty', style: 'position:relative' }, plate(d.art, d.name, 200))),
+    h('div', { class: 'spread', style: 'align-items:flex-start' },
+      h('h2', { class: 'd', style: 'font-size:31px;line-height:1.02;font-weight:700' }, d.name),
+      SPICE[d.spice] ? h('span', { class: 'flames', 'aria-label': d.spice + ' spice' }, [1, 2, 3].map((n) => h('span', { class: n <= SPICE[d.spice] ? 'on' : '' }, flame()))) : null),
+    h('p', { class: 'muted' }, d.description),
+    h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, SPICE[d.spice] ? h('span', { class: 'tag' + (d.spice === 'Hot' ? ' hot' : '') }, d.spice + ' spice') : null, d.allergens.map((a) => h('span', { class: 'tag al' }, 'Contains ' + a))),
+    d.sizes.length ? h('div', { class: 'seg' }, d.sizes.map((s) => h('button', { class: String(S.sheet.size) === String(s.id) ? 'on' : '', onclick: () => { S.sheet.size = s.id; render(); } }, s.label + ' · ' + money(CUR, s.price)))) : null,
+    d.deals.map((e) => h('div', { class: 'col', style: 'padding:14px;border-radius:22px;gap:6px;background:linear-gradient(135deg,#ffc247,#ff8a1f);color:#2a1400' },
+      h('span', { class: 'bb' }, 'Deal'),
+      h('div', { class: 'row', style: 'gap:12px' }, plate(e.art, e.partner, 48, 'flat'), h('span', { class: 'grow bb' }, '+ ' + e.partner, h('span', { style: 'display:block;font-weight:500' }, h('b', {}, money(CUR, e.price)), ' ', h('s', {}, money(CUR, e.normal)))),
+        h('button', { class: 'btn sm', style: 'background:#120d0b;color:#fff4e8;box-shadow:none', onclick: () => { addDeal(d, e); S.sheet = null; toast('Deal added'); render(); } }, 'Add deal')))),
+    pairs.length ? h('div', { class: 'card flat', style: 'gap:12px;padding:14px' }, h('span', { class: 'bb' }, 'Goes well with'),
+      pairs.map((x) => h('div', { class: 'row', style: 'gap:12px' }, plate(x.art, x.name, 46, 'flat'), h('span', { class: 'grow' }, x.name + ' ', h('span', { class: 'muted' }, '+' + money(CUR, x.price))), h('button', { class: 'btn ghost sm', onclick: () => { addLine(x, '', 1); toast(x.name + ' added'); render(); } }, 'Add')))) : null,
+    h('div', { class: 'row', style: 'gap:12px' },
+      h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { S.sheet.qty = Math.max(1, S.sheet.qty - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, S.sheet.qty), h('button', { 'aria-label': 'More', onclick: () => { S.sheet.qty += 1; render(); } }, icon('plus', 16, 2.4))),
+      h('button', { class: 'btn grow', onclick: () => { addLine(d, S.sheet.size, S.sheet.qty); S.sheet = null; toast(d.name + ' added'); render(); } }, 'Add to order · ' + money(CUR, price * S.sheet.qty))),
+  ]);
+}
+function nameSheet() {
+  if (!S.askName) return null;
+  return shell([
+    h('h2', { class: 'd', style: 'font-size:30px;font-weight:700' }, 'Who is ', h('span', { class: 'gold' }, 'ordering'), '?'),
+    h('p', { class: 'muted' }, 'Tell us your name so the bill, the games and your points know who you are. Everyone at the table does the same on their own phone.'),
+    h('input', { id: 'name-in', placeholder: 'Your name', maxlength: 40, autocomplete: 'given-name', 'aria-label': 'Your name', onkeydown: (e) => { if (e.key === 'Enter') join(); } }),
+    h('button', { class: 'btn wide', onclick: join }, 'Start'),
+  ]);
+}
+async function join() {
+  const name = ($('#name-in') || {}).value;
+  await act(async () => { await api(url('join/'), { name }); S.askName = false; await refreshState(); }, null);
+  render();
 }
 
 /* ---------- views ---------- */
@@ -130,9 +171,9 @@ function cartView() {
     return h('div', { class: A('card'), style: `--i:${i};flex-direction:row;gap:14px;align-items:center;padding:12px` },
       plate(d.art, d.name, 64),
       h('div', { class: 'col grow', style: 'gap:8px' },
-        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:#ffcb62' }, money(CUR, unit(l) * l.qty))),
+        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name, l.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:#ffcb62' }, money(CUR, unit(l) * l.qty))),
         h('div', { class: 'spread' },
-          h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { l.qty -= 1; if (l.qty < 1) S.cart.splice(i, 1); render(); } }, icon('minus', 14, 2.6)), h('span', {}, l.qty), h('button', { 'aria-label': 'More', onclick: () => { l.qty += 1; render(); } }, icon('plus', 14, 2.6))),
+          h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { changeQty(l, -1); render(); } }, icon('minus', 14, 2.6)), h('span', {}, l.qty), h('button', { 'aria-label': 'More', onclick: () => { changeQty(l, 1); render(); } }, icon('plus', 14, 2.6))),
           h('input', { id: 'note-' + i, style: 'width:120px;padding:8px 10px;font-size:12px', 'aria-label': 'Note for the kitchen', placeholder: 'Add a note', value: l.note, maxlength: 140, oninput: (e) => { l.note = e.target.value; } }))));
   });
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your order', 'menu', h('span', { class: 'pill' }, 'Table ' + TNUM)),
@@ -143,8 +184,9 @@ function cartView() {
       h('button', { class: 'btn wide', disabled: !S.cart.length, onclick: place }, 'Place order')));
 }
 async function place() {
+  if (!S.guest) { S.askName = true; S.sheetIn = true; render(); return; }
   await act(async () => {
-    await api(url('order/'), { items: S.cart.map((l) => ({ dish_id: l.id, size_id: l.size || null, quantity: l.qty, note: l.note })) });
+    await api(url('order/'), { items: S.cart.map((l) => ({ dish_id: l.id, size_id: l.size || null, quantity: l.qty, note: l.note, deal_id: l.deal ? l.deal.id : null })) });
     S.cart = []; S.view = 'placed'; S.anim = true;
   }, refreshState);
   render();
@@ -168,25 +210,90 @@ function ringCard(o) {
 }
 function orderCard(o, i) {
   const step = STEPS.indexOf(o.status);
-  const msg = { placed: 'Waiting for the waiter to confirm your order.', cooking: 'The kitchen is cooking it now.', ready: 'Your food is ready and on its way to you.' }[o.status];
+  const msg = { placed: 'Waiting for the waiter to confirm your order.', cooking: 'The kitchen is cooking it now.', ready: 'Your food is ready and on its way to you.', served: 'Enjoy your meal.' }[o.status];
   return h('div', { class: A('card'), style: `--i:${i + 1};gap:12px` },
-    h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Order #' + o.id), h('span', { class: 'st ' + (o.status === 'placed' ? 'ordering' : 'eating') }, o.label)),
-    h('div', { class: 'steps' }, STEPS.map((s, n) => h('div', { class: (n <= step ? 'on' : '') + (n === step ? ' now' : '') }, h('i'), s[0].toUpperCase() + s.slice(1)))),
+    h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Order #' + o.id, o.guest ? h('span', { class: 'muted sm', style: 'margin-left:8px;font-weight:500' }, 'by ' + o.guest) : null), h('span', { class: 'st ' + (o.status === 'placed' ? 'ordering' : 'eating') }, o.label)),
+    h('div', { class: 'steps' }, STEPS.map((s, n) => h('div', { class: (n <= step ? 'on' : '') + (n === step && o.status !== 'served' ? ' now' : '') }, h('i'), s[0].toUpperCase() + s.slice(1)))),
     h('p', { class: 'muted' }, msg),
-    h('ul', { class: 'col', style: 'gap:10px' }, o.items.map((it) => h('li', { class: 'row', style: 'gap:12px' }, plate(it.art, it.name, 34, 'flat'), h('span', { class: 'grow' }, it.qty + ' × ' + it.name + (it.size ? ' (' + it.size + ')' : ''), it.note ? h('span', { class: 'muted sm', style: 'display:block' }, 'Note: ' + it.note) : null)))),
+    h('ul', { class: 'col', style: 'gap:10px' }, o.items.map((it) => h('li', { class: 'row', style: 'gap:12px' }, plate(it.art, it.name, 34, 'flat'), h('span', { class: 'grow' }, it.qty + ' × ' + it.name + (it.size ? ' (' + it.size + ')' : ''), it.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null, it.note ? h('span', { class: 'muted sm', style: 'display:block' }, 'Note: ' + it.note) : null)))),
     h('div', { class: 'spread', style: 'border-top:1.5px dashed var(--line);padding-top:10px' }, h('span', { class: 'muted' }, 'Total'), h('span', { class: 'd num bb', style: 'font-size:20px' }, money(CUR, o.total))));
+}
+function hubTile(ic, label, sub, to) {
+  return h('button', { class: 'card', style: 'align-items:center;gap:4px;padding:16px 6px;text-align:center', onclick: () => go(to) }, icon(ic, 28, 1.8), h('span', { class: 'bb' }, label), h('span', { class: 'muted sm' }, sub));
 }
 function statusView() {
   const o = focusStatus();
-  const title = !o ? ['Nothing ordered yet'] : o.status === 'ready' ? ['Your food is ', h('span', { class: 'gold' }, 'ready')] : o.status === 'cooking' ? ['Your food is ', h('span', { class: 'gold' }, 'cooking')] : ['Order ', h('span', { class: 'gold' }, 'received')];
+  const title = !o ? ['Nothing ordered yet'] : o.status === 'served' ? ['Enjoy your ', h('span', { class: 'gold' }, 'meal')] : o.status === 'ready' ? ['Your food is ', h('span', { class: 'gold' }, 'ready')] : o.status === 'cooking' ? ['Your food is ', h('span', { class: 'gold' }, 'cooking')] : ['Order ', h('span', { class: 'gold' }, 'received')];
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') },
     h('div', { class: 'hero', style: 'padding:58px 20px 22px;flex:none' }, h('div', { class: 'row', style: 'position:relative;z-index:1;gap:12px' },
       h('button', { class: 'iconbtn glass', 'aria-label': 'Back to the menu', onclick: () => go('menu') }, icon('back')),
       h('div', { class: 'grow' }, h('div', { class: 'sm muted' }, 'Table ' + TNUM + ' · ' + RNAME), h('h1', { class: 'd', style: 'font-size:30px;font-weight:700;line-height:1.05' }, title)))),
     h('div', { class: 'scroll col', style: 'padding:4px 18px 22px;gap:14px' },
       o && o.status === 'cooking' && o.endsAt ? ringCard(o) : null,
+      S.orders.length ? h('div', { class: 'col', style: 'gap:8px' }, h('span', { class: 'bb', style: 'font-size:18px' }, 'While you wait'),
+        h('div', { style: 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px' },
+          S.wifi ? hubTile('wifi', 'WiFi', 'Connect', 'wifi') : null,
+          hubTile('gift', 'Rewards', S.reward ? S.reward.points + ' pts' : 'Earn', 'rewards'),
+          hubTile('game', 'Games', 'Spice quiz', 'quiz'))) : null,
       S.orders.length ? S.orders.map(orderCard) : h('div', { class: 'empty' }, 'Order something and follow it here.'),
-      h('div', { class: 'row', style: 'gap:10px' }, h('button', { class: 'btn ghost grow', onclick: () => go('menu') }, '+ Add items'), h('button', { class: 'btn dark grow', onclick: () => go('call') }, 'Call waiter'))));
+      h('div', { class: 'row', style: 'gap:10px' }, h('button', { class: 'btn ghost grow', onclick: () => go('menu') }, '+ Add items'), h('button', { class: 'btn dark grow', onclick: () => go('call') }, 'Call waiter')),
+      S.bill ? h('button', { class: 'btn wide', onclick: () => go('bill') }, 'Show the bill') : null));
+}
+function wifiView() {
+  const w = S.wifi || { name: '', password: '' };
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('WiFi', 'status'),
+    h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' },
+      h('div', { class: A('card'), style: 'align-items:center;padding:28px 18px;gap:14px;text-align:center;box-shadow:var(--shadow-m)' },
+        h('div', { class: 'floaty', style: 'color:#ffcb62' }, icon('wifi', 64, 1.6)),
+        h('span', { class: 'muted sm b' }, 'Network'), h('span', { class: 'd', style: 'font-size:28px;font-weight:700' }, w.name),
+        h('span', { class: 'muted sm b' }, 'Password'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700;color:#ffcb62' }, w.password || 'No password'),
+        w.password ? h('button', { class: 'btn', onclick: () => copyText(w.password) }, icon('copy', 18), 'Copy the password') : null),
+      h('p', { class: 'muted' }, 'Open your phone\'s WiFi settings, pick this network and paste the password.')));
+}
+function rewardsView() {
+  const r = S.reward || { points: 0, goal: 200, text: 'a reward', email: '' }, earn = S.bill ? S.bill.earn : 0;
+  const pct = Math.min(1, r.points / Math.max(1, r.goal));
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Rewards', 'status'),
+    h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' },
+      h('h2', { class: A('d'), style: 'font-size:34px;font-weight:700;line-height:1.05' }, 'Every meal ', h('span', { class: 'gold' }, 'earns points')),
+      h('div', { class: A('card'), style: '--i:1;align-items:center;padding:24px 18px;gap:14px;box-shadow:var(--shadow-m)' },
+        h('div', { style: 'position:relative;width:200px;height:200px' },
+          svg(`<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><circle class="bg" cx="100" cy="100" r="74"/><circle class="fg" cx="100" cy="100" r="74" style="stroke-dashoffset:${(464.9 * (1 - pct)).toFixed(1)}"/></svg>`),
+          h('div', { style: 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center' }, h('span', { class: 'd num', style: 'font-size:48px;font-weight:700;line-height:1' }, r.points), h('span', { class: 'muted sm b' }, 'POINTS'))),
+        earn ? h('span', { class: 'tag al', style: 'font-size:13px' }, '+' + earn + ' points when you pay this bill') : null,
+        h('span', { class: 'muted' }, r.text + ' at ' + r.goal + ' points')),
+      r.email ? h('div', { class: 'card flat' }, h('span', { class: 'bb' }, 'You are in'), h('span', { class: 'muted' }, 'Your points are saved to ' + r.email + '. Use the same email next time.'))
+        : h('div', { class: A('card'), style: '--i:2;gap:12px' }, h('span', { class: 'bb' }, 'Keep your points'), h('p', { class: 'muted' }, 'Add your email so the points stay yours for your next visit.'),
+          h('input', { id: 'member-in', type: 'email', placeholder: 'you@example.com', 'aria-label': 'Email', autocomplete: 'email' }),
+          h('button', { class: 'btn wide', onclick: () => act(async () => { await api(url('member/'), { email: ($('#member-in') || {}).value }); toast('Welcome to the rewards'); await refreshState(); }, null) }, 'Join rewards'))));
+}
+async function loadQuiz() { try { S.quiz = await api(url('quiz/')); } catch (e) { /* shown empty */ } }
+function quizView() {
+  const q = S.quiz, board = q ? q.board : { tables: [], players: [] };
+  const body = !S.guest ? h('div', { class: 'card' }, h('p', { class: 'muted' }, 'Tell us your name first so your score counts.'), h('button', { class: 'btn', onclick: () => { S.askName = true; S.sheetIn = true; render(); } }, 'Add my name'))
+    : !q ? h('div', { class: 'empty' }, 'Loading…')
+    : !q.question && !S.qAns ? h('div', { class: A('card'), style: 'align-items:center;text-align:center;padding:24px' }, h('h3', { class: 'd', style: 'font-size:26px' }, 'You answered them all'), h('p', { class: 'muted' }, 'You scored ' + q.me + ' points. Watch the board for who is ahead.'))
+    : h('div', { class: 'col', style: 'gap:12px' }, h('div', { class: 'card', style: 'gap:14px;padding:18px' },
+      h('span', { class: 'muted sm b' }, 'Your score ' + q.me + ' pts'),
+      h('h3', { class: 'd', style: 'font-size:24px;line-height:1.15;font-weight:700' }, (S.qAns ? S.qAns.text : q.question.text)),
+      h('div', { class: 'col', style: 'gap:8px' }, (S.qAns ? S.qAns.options : q.question.options).map((o, i) => {
+        const cls = S.qAns ? (i === S.qAns.right ? ' on' : i === S.qAns.choice ? ' wrong' : '') : '';
+        return h('button', { class: 'seg-btn' + cls, disabled: !!S.qAns, onclick: () => answerQuiz(i) }, o);
+      }))));
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Spice Quiz', 'status'),
+    h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' }, body,
+      h('div', { class: 'card' }, h('span', { class: 'bb' }, 'Table vs table · live'),
+        board.tables.length ? board.tables.map((t, i) => h('div', { class: 'spread' }, h('span', { class: 'row', style: 'gap:10px' }, h('span', { class: 'pill', style: 'min-width:28px;justify-content:center' }, i + 1), h('span', { class: t.table === TNUM ? 'bb' : '' }, 'Table ' + t.table + (t.table === TNUM ? ' (you)' : ''))), h('span', { class: 'num bb', style: 'color:#ffcb62' }, t.points + ' pts'))) : h('span', { class: 'muted' }, 'No scores yet. Be the first.')),
+      board.players.length ? h('div', { class: 'card' }, h('span', { class: 'bb' }, 'Players'), board.players.map((p) => h('div', { class: 'spread' }, h('span', { class: p.id === (S.guest && S.guest.id) ? 'bb' : '' }, p.name, h('span', { class: 'muted sm' }, ' · Table ' + p.table)), h('span', { class: 'num b' }, p.points + ' pts')))) : null));
+}
+async function answerQuiz(choice) {
+  const q = S.quiz.question;
+  await act(async () => {
+    const res = await api(url('quiz/answer/'), { question_id: q.id, choice });
+    S.qAns = { ...q, choice, right: res.right };
+    render();
+    setTimeout(async () => { S.qAns = null; await loadQuiz(); render(); }, 1300);
+  }, null);
 }
 const KINDS = [['water', 'Water', 'drop'], ['napkins', 'Napkins', 'napkin'], ['bill', 'Bill', 'receipt'], ['call', 'Call waiter', 'bell']];
 function callView() {
@@ -197,16 +304,69 @@ function callView() {
         h('button', { class: A('callopt') + (open(k) ? ' on' : ''), style: `--i:${i}`, onclick: () => act(async () => { await api(url('call/'), { kind: k }); toast(label + ' requested'); }, refreshState) }, icon(ic, 38, 1.7), label))),
       S.requests.map((r) => h('div', { class: 'card pop', style: 'gap:10px;padding:18px' },
         h('div', { class: 'spread' }, h('span', { class: 'bb', style: 'font-size:16px' }, r.label), r.status === 'acknowledged' ? h('span', { class: 'st eating' }, 'On the way') : h('span', { class: 'st bill' }, 'Sent to staff')),
-        h('p', { class: 'muted' }, r.status === 'acknowledged' ? 'A waiter is coming to your table.' : 'Your waiter has been alerted. We will tell you the moment someone picks it up.')))));
+        h('p', { class: 'muted' }, r.status === 'acknowledged' ? (r.assigned ? r.assigned + ' is coming to your table' : 'A waiter is coming to your table') + (r.response !== null ? '. They answered in ' + r.response + ' seconds.' : '.') : 'Your waiter has been alerted. We will tell you the moment someone picks it up.')))));
 }
-const VIEWS = { menu: menuView, cart: cartView, placed: placedView, status: statusView, call: callView };
+
+/* ---------- bill and paying ---------- */
+function billView() {
+  const b = S.bill;
+  if (!b) return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your bill', 'status'), h('div', { class: 'scroll col', style: 'padding:10px 18px' }, h('div', { class: 'empty' }, 'There is nothing to pay yet.')));
+  const mine = S.payments.find((p) => p.mine), locked = b.status === 'paying';
+  const split = locked ? b.split : (S.pay.split || Math.max(1, S.guests.length || 1));
+  const share = Math.ceil(+b.base / split), tipAmt = Math.round(share * S.pay.tip / 100), open = b.split - S.payments.length;
+  const row = (l, v, cls) => h('div', { class: 'spread' + (cls || '') }, h('span', { class: cls ? '' : 'muted' }, l), h('span', { class: 'num' }, v));
+  const itemised = h('div', { class: A('card'), style: '--i:0;gap:10px' },
+    b.items.map((i) => h('div', { class: 'spread' }, h('span', { class: 'row', style: 'gap:10px' }, plate(i.art, i.name, 30, 'flat'), i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : '')), h('span', { class: 'num' }, money(CUR, i.total)))),
+    h('div', { class: 'sum', style: 'padding-top:10px;border-top:1.5px dashed var(--line)' }, row('Subtotal', money(CUR, b.sub)), row('Service charge ' + b.service_percent + '%', money(CUR, b.service)), row('Tax ' + b.tax_percent + '%', money(CUR, b.tax)),
+      h('div', { class: 'spread t' }, h('span', {}, 'Total'), h('span', { class: 'num gold' }, money(CUR, b.base)))));
+  const others = S.payments.length ? h('div', { class: A('card'), style: '--i:1;gap:10px' }, h('span', { class: 'bb' }, 'Who is paying'),
+    S.payments.map((p) => h('div', { class: 'spread' }, h('span', {}, (p.mine ? 'You' : p.guest) + ' · ' + p.method_label), h('span', { class: 'row', style: 'gap:8px' }, h('span', { class: 'num b' }, money(CUR, p.amount)), h('span', { class: 'st ' + (p.status === 'paid' ? 'eating' : 'bill') }, p.status === 'paid' ? 'Paid' : 'Waiting for waiter')))),
+    open > 0 ? h('span', { class: 'muted sm' }, open + (open === 1 ? ' share is' : ' shares are') + ' still to be paid.') : null) : null;
+  const form = mine ? h('div', { class: A('card'), style: '--i:2;align-items:center;text-align:center;padding:22px;gap:8px' }, h('div', { class: 'livedot', style: 'width:14px;height:14px' }), h('h3', { class: 'd', style: 'font-size:24px' }, 'Your waiter is coming'), h('p', { class: 'muted' }, 'Pay ' + money(CUR, mine.amount) + ' by ' + mine.method_label.toLowerCase() + ' at your table. This screen updates the moment they confirm.'))
+    : [h('div', { class: A('card'), style: '--i:2;gap:12px' }, h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Split the bill'), h('span', { class: 'muted sm' }, locked ? 'Already chosen by the table' : S.guests.length > 1 ? S.guests.join(' and ') : 'Equal shares')),
+        h('div', { class: 'spread' }, h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer people', disabled: locked, onclick: () => { S.pay.split = Math.max(1, split - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, split), h('button', { 'aria-label': 'More people', disabled: locked, onclick: () => { S.pay.split = Math.min(10, split + 1); render(); } }, icon('plus', 16, 2.4))),
+          h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:#ffcb62' }, money(CUR, share), h('span', { class: 'muted sm', style: 'font-family:var(--font-b);font-weight:600' }, ' each')))),
+      h('div', { class: A('card'), style: '--i:3;gap:12px' }, h('span', { class: 'bb' }, 'Tip'), h('div', { class: 'seg' }, [0, 5, 10, 15, 20].map((p) => h('button', { class: S.pay.tip === p ? 'on' : '', onclick: () => { S.pay.tip = p; render(); } }, p ? p + '%' : 'No tip')))),
+      h('div', { class: A('card'), style: '--i:4;gap:10px' }, h('span', { class: 'bb' }, 'Pay at the table by'),
+        METHODS.map(([k, label, ic]) => h('button', { class: 'row' + (S.pay.method === k ? ' on' : ''), style: `gap:12px;padding:12px 14px;border-radius:16px;border:1.5px solid ${S.pay.method === k ? 'var(--saf)' : 'var(--line)'};background:${S.pay.method === k ? 'var(--saf-s)' : 'var(--s1)'};text-align:left`, onclick: () => { S.pay.method = k; render(); } }, icon(ic, 22, 1.8), h('span', { class: 'grow b' }, label), S.pay.method === k ? icon('check', 18, 2.6) : null))),
+      h('div', { class: A('card'), style: '--i:5;gap:8px' }, h('label', { class: 'f' }, 'Email the invoice to', h('input', { id: 'pay-email', type: 'email', placeholder: 'you@example.com (optional)', value: S.pay.email, autocomplete: 'email', oninput: (e) => { S.pay.email = e.target.value; } })))];
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your bill', 'status', h('span', { class: 'pill' }, '#' + b.id)),
+    h('div', { class: 'scroll col', style: 'padding:6px 18px 14px;gap:12px' }, itemised, others, form),
+    mine ? null : h('div', { class: 'col', style: 'padding:16px 18px 28px;background:linear-gradient(180deg,#261c16,#1c1511);border-top:1px solid #3b2d24;border-radius:32px 32px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
+      h('button', { class: 'btn wide', onclick: payNow }, 'Pay ' + money(CUR, share + tipAmt))));
+}
+async function payNow() {
+  const b = S.bill, locked = b.status === 'paying', split = locked ? b.split : (S.pay.split || Math.max(1, S.guests.length || 1));
+  if (!S.guest) { S.askName = true; S.sheetIn = true; render(); return; }
+  await act(async () => { await api(url('pay/'), { method: S.pay.method, tip: S.pay.tip, split, email: S.pay.email }); toast('Your waiter is on the way'); }, refreshState);
+}
+function thanksView() {
+  const p = S.paid || { amount: '0', method: '', email: '', reviewed: false };
+  const done = S.reviewed || p.reviewed;
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') },
+    h('div', { class: 'hero', style: 'padding:64px 20px 30px;flex:none;text-align:center' }, h('div', { class: 'col', style: 'position:relative;z-index:1;align-items:center;gap:10px' },
+      h('div', { class: 'pop', style: 'width:76px;height:76px;border-radius:50%;background:linear-gradient(160deg,#ffc247,#ff8a1f);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px rgba(255,176,32,.12),var(--glow);color:#2a1400' }, svg('<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
+      h('h1', { class: 'd rise', style: '--i:2;font-size:34px;font-weight:700' }, 'Payment ', h('span', { class: 'gold' }, 'recorded')),
+      h('p', { class: 'muted rise', style: '--i:3' }, money(CUR, p.amount) + ' by ' + p.method + '. Thank you for dining with us.'))),
+    h('div', { class: 'scroll col', style: 'padding:8px 18px 22px;gap:12px' },
+      h('div', { class: A('card'), style: '--i:1' }, h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Invoice'), h('span', { class: 'muted sm' }, '#' + p.id)),
+        h('p', { class: 'muted' }, p.email ? 'We emailed the invoice to ' + p.email + '.' : 'No email was given, so no invoice was sent.'),
+        S.reward && S.reward.email ? h('span', { class: 'tag al', style: 'align-self:flex-start' }, 'Points added to ' + S.reward.email) : null),
+      done ? h('div', { class: 'card pop', style: 'align-items:center;gap:10px;padding:24px;text-align:center' }, h('h2', { class: 'd', style: 'font-size:30px;font-weight:700' }, 'Thank ', h('span', { class: 'gold' }, 'you')), h('p', { class: 'muted' }, 'Your review is with the owner.'), h('button', { class: 'btn dark wide', onclick: () => { S.paid = null; S.reviewed = false; go('menu'); } }, 'Back to the menu'))
+        : h('div', { class: A('card'), style: '--i:2;align-items:center;gap:14px;padding:20px' }, h('span', { class: 'd', style: 'font-size:22px;font-weight:700' }, 'How was your meal?'),
+          h('div', { class: 'row stars', style: 'gap:6px' }, [1, 2, 3, 4, 5].map((n) => h('button', { class: S.stars >= n ? 'on' : '', 'aria-label': n + (n === 1 ? ' star' : ' stars'), onclick: () => { S.stars = n; render(); } }, svg('<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>')))),
+          h('textarea', { id: 'review-in', rows: 2, 'aria-label': 'Comment', style: 'width:100%', maxlength: 300, placeholder: 'Anything we should know? (optional)' }),
+          h('button', { class: 'btn wide', disabled: !S.stars, onclick: () => act(async () => { await api(url('review/'), { stars: S.stars, comment: ($('#review-in') || {}).value }); S.reviewed = true; S.anim = true; }, refreshState) }, 'Post review'))));
+}
+const VIEWS = { menu: menuView, cart: cartView, placed: placedView, status: statusView, call: callView, bill: billView, thanks: thanksView, wifi: wifiView, rewards: rewardsView, quiz: quizView };
 
 function render() {
   const keep = [...root.querySelectorAll('.scroll')].map((e) => e.scrollTop);
   const a = document.activeElement, focus = a && a.id ? [a.id, a.selectionStart, a.selectionEnd] : null;
-  root.replaceChildren(VIEWS[S.view]());
+  root.replaceChildren(VIEWS[S.view](), ...[nameSheet()].flat().filter(Boolean));
   root.querySelectorAll('.scroll').forEach((e, i) => { if (keep[i]) e.scrollTop = keep[i]; });
-  if (focus) { const el = document.getElementById(focus[0]); if (el) { el.focus(); try { el.setSelectionRange(focus[1], focus[2]); } catch (e) { /* not text */ } } }
+  const f = focus && document.getElementById(focus[0]) || ($('#name-in') && S.sheetIn ? $('#name-in') : null);
+  if (f) { f.focus(); try { if (focus) f.setSelectionRange(focus[1], focus[2]); } catch (e) { /* not text */ } }
   S.anim = false; S.sheetIn = false;
 }
 
@@ -214,11 +374,20 @@ async function refreshState() {
   const s = await api(url('state/'));
   const now = Date.now();
   S.orders = s.orders.map((o) => ({ ...o, endsAt: o.seconds_left === null ? null : now + o.seconds_left * 1000 }));
-  S.requests = s.requests;
+  Object.assign(S, { requests: s.requests, guest: s.guest, guests: s.guests, wifi: s.wifi, reward: s.reward, bill: s.bill, payments: s.payments, paid: s.paid });
+  if (!S.guest && !S.nameAsked) { S.nameAsked = true; S.askName = true; S.sheetIn = true; }
+  if (S.paid && ['bill', 'status', 'call'].includes(S.view) && !S.orders.length) { S.view = 'thanks'; S.anim = true; toast('Payment confirmed'); }
+  if (S.view === 'quiz') await loadQuiz();
   render();
 }
 
 render();
 live('/ws/t/' + CODE + '/', refreshState);
 </script>
+<style>
+.seg-btn { min-height: 50px; padding: 0 16px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--s1); font-weight: 700; text-align: left; transition: background-color .2s, border-color .2s; }
+.seg-btn:hover:not([disabled]) { border-color: var(--saf); }
+.seg-btn.on { border-color: var(--mint); background: var(--mint-s); color: var(--mint); }
+.seg-btn.wrong { border-color: var(--chi); background: var(--chi-s); color: #ff8a7e; }
+</style>
 {% endblock %}

@@ -7,16 +7,27 @@ urlpatterns = [
     # guest
     path("t/<str:code>/", views.table_page, name="table"),
     path("t/<str:code>/state/", views.table_state, name="table_state"),
+    path("t/<str:code>/join/", views.table_join, name="table_join"),
+    path("t/<str:code>/member/", views.table_member, name="table_member"),
     path("t/<str:code>/order/", views.table_order, name="table_order"),
     path("t/<str:code>/call/", views.table_call, name="table_call"),
+    path("t/<str:code>/pay/", views.table_pay, name="table_pay"),
+    path("t/<str:code>/review/", views.table_review, name="table_review"),
+    path("t/<str:code>/quiz/", views.table_quiz, name="table_quiz"),
+    path("t/<str:code>/quiz/answer/", views.table_quiz_answer, name="table_quiz_answer"),
     # staff
     path("staff/", views.staff_page, name="staff"),
     path("staff/data/", views.staff_data, name="staff_data"),
     path("staff/orders/<int:pk>/advance/", views.order_advance, name="order_advance"),
     path("staff/requests/<int:pk>/<str:action>/", views.request_action, name="request_action"),
+    path("staff/payments/<int:pk>/paid/", views.payment_paid, name="payment_paid"),
+    path("staff/bills/<int:pk>/close/", views.bill_close, name="bill_close"),
     path("staff/qr/", views.qr_sheet, name="qr"),
     # kitchen
     path("kitchen/", views.kitchen_page, name="kitchen"),
     path("kitchen/data/", views.kitchen_data, name="kitchen_data"),
     path("kitchen/orders/<int:pk>/ready/", views.kitchen_ready, name="kitchen_ready"),
+    # owner
+    path("owner/", views.owner_page, name="owner"),
+    path("owner/data/", views.owner_data, name="owner_data"),
 ]
