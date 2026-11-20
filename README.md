@@ -49,3 +49,7 @@ Payments and bills, floor map, sold-out toggle, order edits, reviews, reports, b
 - Guests at a table share the order list but not a cart.
 
 Design: `docs/superpowers/specs/2026-11-20-restaurant-alpha-design.md`.
+
+## Design prototype (all Beta screens)
+
+`prototype/index.html` is a clickable, front-end-only prototype of the full Beta product: guest QR ordering, staff tablet, kitchen display, owner dashboard and platform console, with sample data, no backend and no validation. Open the file in a browser, or serve the folder with `python -m http.server -d prototype`.

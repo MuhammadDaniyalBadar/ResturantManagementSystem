@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Restaurant System Prototype</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout concept: a guided flow bar on top, devices in the middle (phone for guests, tablet for staff, wall screen for the kitchen, laptop for owners), and a side note naming the requirements each screen proves. */
+:root {
+  --font-display: 'Bricolage Grotesque', 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --bg: #edf0f3; --panel: #ffffff; --panel2: #f5f7fa; --fg: #121c2b; --muted: #5a6a7e; --line: #d8dfe7;
+  --brand: #0e7a53; --brand-fg: #ffffff; --blue: #2159c9; --amber: #9a5a06; --red: #c0352b;
+  --bezel: #1b2431; --screen: #ffffff;
+  --brand-soft: color-mix(in srgb, var(--brand) 13%, var(--panel));
+  --blue-soft: color-mix(in srgb, var(--blue) 12%, var(--panel));
+  --amber-soft: color-mix(in srgb, var(--amber) 14%, var(--panel));
+  --red-soft: color-mix(in srgb, var(--red) 12%, var(--panel));
+  --shadow: 0 1px 2px rgba(18,28,43,.06), 0 12px 32px rgba(18,28,43,.10);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0c121a; --panel: #141d29; --panel2: #1a2635; --fg: #e8eef5; --muted: #93a4b8; --line: #26354a;
+    --brand: #33c48a; --brand-fg: #06281b; --blue: #7aa2f7; --amber: #e0a030; --red: #f0766a;
+    --bezel: #05080c; --screen: #101822; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0c121a; --panel: #141d29; --panel2: #1a2635; --fg: #e8eef5; --muted: #93a4b8; --line: #26354a;
+  --brand: #33c48a; --brand-fg: #06281b; --blue: #7aa2f7; --amber: #e0a030; --red: #f0766a;
+  --bezel: #05080c; --screen: #101822; --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 32px rgba(0,0,0,.45);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.45; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 96px; }
+button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; line-height: 1.15; text-wrap: balance; }
+p { margin: 0; }
+.muted { color: var(--muted); } .sm { font-size: 12px; } .num { font-variant-numeric: tabular-nums; }
+.ic { flex: none; vertical-align: -3px; }
+
+/* top bar and flow */
+.app { max-width: 1400px; margin: 0 auto; }
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-block: 18px 10px; }
+.brandmark { display: flex; align-items: baseline; gap: 10px; }
+.brandmark b { font-family: var(--font-display); font-size: 22px; letter-spacing: -.01em; }
+.pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+.flow { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding-bottom: 14px; }
+.fgroup { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.fgroup > .lab { flex: none; width: 112px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.fsteps { display: flex; gap: 6px; overflow-x: auto; padding: 2px; scrollbar-width: thin; min-width: 0; flex: 1; }
+.fsteps button { flex: none; display: flex; align-items: center; gap: 8px; padding: 7px 12px 7px 8px; border-radius: 99px; background: var(--panel); border: 1px solid var(--line); white-space: nowrap; }
+.fsteps button .n { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--panel2); font-size: 11px; font-weight: 600; color: var(--muted); }
+.fsteps button.done .n { background: var(--brand-soft); color: var(--brand); }
+.fsteps button.on { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.fsteps button.on .n { background: var(--bg); color: var(--fg); }
+.fsteps button.plain { padding-left: 14px; }
+
+.stage { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 24px; align-items: start; }
+.devices { display: flex; flex-wrap: wrap; gap: 24px; justify-content: center; align-items: flex-start; min-width: 0; }
+.notes { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; position: sticky; top: 12px; }
+.notes h2 { font-size: 20px; margin-bottom: 6px; }
+.notes .for { margin-top: 10px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.reqs { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 8px; }
+.reqs li { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: start; font-size: 13px; }
+.rid { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--muted); }
+.ph { font-size: 11px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); }
+.ph.Alpha { background: var(--brand-soft); color: var(--brand); border-color: transparent; }
+.ph.Beta { background: var(--blue-soft); color: var(--blue); border-color: transparent; }
+.later { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+.bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--panel); border-top: 1px solid var(--line); padding: 10px max(16px, env(safe-area-inset-left, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)); }
+.bar > div { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bar .where { color: var(--muted); font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* buttons and bits */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 10px 16px; border-radius: 10px; background: var(--brand); color: var(--brand-fg); font-weight: 600; }
+.btn.ghost { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); }
+.btn.dark { background: var(--fg); color: var(--bg); }
+.btn.red { background: var(--red-soft); color: var(--red); }
+.btn.sm { padding: 6px 12px; font-size: 13px; border-radius: 8px; }
+.btn.wide { width: 100%; }
+.btn[disabled] { opacity: .45; cursor: default; }
+.chip { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+.chip.on { background: var(--brand); color: var(--brand-fg); border-color: var(--brand); }
+.tag { font-style: normal; font-size: 11px; padding: 1px 8px; border-radius: 99px; background: var(--panel2); color: var(--muted); }
+.tag.al { background: var(--amber-soft); color: var(--amber); }
+.tag.hot { background: var(--red-soft); color: var(--red); }
+.tag.so { background: var(--fg); color: var(--bg); }
+.st { display: inline-block; font-size: 11px; padding: 2px 9px; border-radius: 99px; font-weight: 600; }
+.st.eating { background: var(--brand-soft); color: var(--brand); } .st.ordering { background: var(--blue-soft); color: var(--blue); }
+.st.bill { background: var(--amber-soft); color: var(--amber); } .st.help { background: var(--red-soft); color: var(--red); }
+.st.free { background: var(--panel2); color: var(--muted); }
+input, select, textarea { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+textarea { width: 100%; resize: vertical; }
+label.f { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+label.f input, label.f select { color: var(--fg); font-size: 14px; }
+.row { display: flex; align-items: center; gap: 10px; }
+.grow { flex: 1; min-width: 0; }
+.spread { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.qty { display: inline-flex; align-items: center; gap: 4px; }
+.qty button { width: 28px; height: 28px; border-radius: 8px; background: var(--panel2); border: 1px solid var(--line); display: grid; place-items: center; }
+.qty span { min-width: 22px; text-align: center; font-weight: 600; }
+.seg { display: flex; gap: 6px; flex-wrap: wrap; }
+.seg button { padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); font-size: 13px; }
+.seg button.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); font-weight: 600; }
+.toggle { width: 38px; height: 22px; border-radius: 99px; background: var(--line); position: relative; flex: none; }
+.toggle::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--panel); transition: transform .15s; }
+.toggle.on { background: var(--brand); } .toggle.on::after { transform: translateX(16px); }
+#toast { position: fixed; left: 50%; bottom: 84px; transform: translate(-50%, 8px); background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 99px; opacity: 0; pointer-events: none; transition: .2s; z-index: 50; max-width: 90vw; font-size: 13px; }
+#toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+/* devices */
+.phone { width: 340px; max-width: 100%; height: 700px; border: 10px solid var(--bezel); border-radius: 40px; background: var(--screen); position: relative; overflow: hidden; box-shadow: var(--shadow); flex: none; }
+.pn { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 96px; height: 18px; background: var(--bezel); border-radius: 0 0 12px 12px; z-index: 5; }
+.scr { height: 100%; display: flex; flex-direction: column; position: relative; padding-top: 18px; }
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 8px 14px 14px; display: grid; align-content: start; gap: 10px; }
+.rh { display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+.logo { width: 34px; height: 34px; border-radius: 10px; background: var(--brand); color: var(--brand-fg); display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; flex: none; }
+.rh .sp { margin-left: auto; }
+.tabs, .fl { display: flex; gap: 6px; overflow-x: auto; padding: 4px 14px; scrollbar-width: none; align-items: center; flex: none; }
+.tabs button { padding: 6px 12px; border-radius: 99px; background: var(--panel2); font-size: 13px; white-space: nowrap; }
+.tabs button.on { background: var(--fg); color: var(--bg); }
+.fl > span { font-size: 12px; color: var(--muted); }
+.hint { margin: 2px 14px 0; font-size: 12px; color: var(--muted); }
+.pfoot { padding: 10px 14px 14px; border-top: 1px solid var(--line); background: var(--screen); flex: none; display: grid; gap: 8px; }
+.dish { display: flex; gap: 12px; text-align: left; width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+.dish.out { opacity: .55; cursor: default; }
+.tile { --h: 20; width: 64px; height: 64px; border-radius: 12px; flex: none; display: grid; place-items: center; font-family: var(--font-display); font-weight: 700; font-size: 20px; background: color-mix(in srgb, hsl(var(--h) 75% 50%) 22%, var(--panel)); color: color-mix(in srgb, hsl(var(--h) 75% 42%) 80%, var(--fg)); }
+.tile.big { width: 100%; height: 110px; font-size: 34px; border-radius: 14px; }
+.dbody { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.drow { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
+.drow b { font-weight: 600; } .drow .num { white-space: nowrap; } .tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.shade { position: absolute; inset: 0; background: rgba(8,12,18,.5); z-index: 6; }
+.sheet { position: absolute; left: 0; right: 0; bottom: 0; z-index: 7; background: var(--screen); border-radius: 22px 22px 0 0; padding: 14px; display: grid; gap: 10px; max-height: 88%; overflow-y: auto; }
+.sheet .x { position: absolute; right: 10px; top: 10px; z-index: 2; width: 30px; height: 30px; border-radius: 50%; background: var(--panel); border: 1px solid var(--line); display: grid; place-items: center; }
+.sheet h3 { font-size: 20px; }
+.pair, .combo { border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: grid; gap: 8px; }
+.combo { background: var(--brand-soft); border-color: transparent; }
+.line { display: grid; gap: 6px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.line input.note { width: 100%; font-size: 13px; padding: 6px 9px; }
+.sum { display: grid; gap: 4px; padding-top: 8px; }
+.sum .spread.t { font-weight: 600; font-size: 16px; padding-top: 6px; border-top: 1px solid var(--line); }
+.ok-ring { width: 64px; height: 64px; border-radius: 50%; background: var(--brand-soft); color: var(--brand); display: grid; place-items: center; margin: 14px auto 6px; }
+.center { text-align: center; display: grid; gap: 6px; justify-items: center; }
+.steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.steps div { font-size: 11px; color: var(--muted); display: grid; gap: 4px; }
+.steps i { height: 6px; border-radius: 3px; background: var(--line); display: block; }
+.steps .on { color: var(--fg); font-weight: 600; } .steps .on i { background: var(--brand); }
+.bigtime { font-family: var(--font-display); font-size: 46px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.banner { background: var(--amber-soft); color: var(--amber); padding: 8px 10px; border-radius: 10px; font-size: 13px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 8px; }
+.call4 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.call4 button { padding: 18px 8px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); display: grid; gap: 6px; justify-items: center; font-weight: 600; }
+.call4 button.on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+.stars { display: flex; gap: 6px; justify-content: center; }
+.stars button { color: var(--line); } .stars button.on { color: var(--amber); }
+.cam { flex: 1; background: #0a0f15; color: #e8eef5; display: grid; align-content: center; justify-items: center; gap: 22px; padding: 20px; text-align: center; }
+.vf { width: 180px; height: 180px; display: grid; place-items: center; background: #fff; border-radius: 10px; outline: 3px solid #33c48a; outline-offset: 10px; overflow: hidden; }
+.tent { width: 250px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; justify-items: center; gap: 6px; text-align: center; box-shadow: var(--shadow); align-self: center; }
+.tent b { font-family: var(--font-display); font-size: 22px; }
+
+.tablet { width: 640px; max-width: 100%; height: 470px; border: 10px solid var(--bezel); border-radius: 24px; background: var(--screen); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow); flex: none; }
+.tablet.wide { width: 700px; }
+.thead { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); flex: none; }
+.thead h3 { font-size: 16px; }
+.tbody { flex: 1; min-height: 0; overflow: auto; padding: 12px 14px; display: grid; gap: 10px; align-content: start; }
+.ticket { border: 1px solid var(--line); border-left: 5px solid var(--brand); border-radius: 10px; padding: 10px 12px; display: grid; gap: 6px; background: var(--panel); }
+.ticket.late { border-left-color: var(--red); }
+.ticket ul { margin: 0; padding-left: 18px; }
+.kds { width: 700px; max-width: 100%; height: 470px; border: 10px solid #05080c; border-radius: 14px; background: #131a23; color: #e8eef5; display: flex; flex-direction: column; box-shadow: var(--shadow); flex: none; --panel: #1b2430; --line: #2a3747; --muted: #9db0c4; --fg: #e8eef5; --panel2: #232f3d; --screen: #131a23; --brand: #33c48a; --brand-fg: #06281b; --red: #f0766a; --red-soft: #3a2220; --amber: #e0a030; --amber-soft: #3a2f16; --brand-soft: #123a2b; }
+.kcols { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 10px; overflow: auto; }
+.kcol h4 { margin: 0 0 8px; font-family: var(--font-display); font-size: 15px; display: flex; justify-content: space-between; }
+.kcol { display: grid; gap: 8px; align-content: start; }
+.timer { font-variant-numeric: tabular-nums; font-weight: 600; }
+.timer.late { color: var(--red); }
+.map { position: relative; height: 100%; min-height: 260px; background: var(--panel2); border-radius: 12px; border: 1px dashed var(--line); }
+.tbl { position: absolute; width: 62px; height: 62px; transform: translate(-50%, -50%); border-radius: 14px; display: grid; place-items: center; font-weight: 700; border: 2px solid var(--line); background: var(--panel); text-align: center; line-height: 1.1; }
+.tbl small { display: block; font-weight: 500; font-size: 10px; }
+.tbl.round { border-radius: 50%; }
+.tbl.sel { outline: 3px solid var(--fg); outline-offset: 2px; }
+.tbl.s-eating { background: var(--brand-soft); border-color: var(--brand); } .tbl.s-ordering { background: var(--blue-soft); border-color: var(--blue); }
+.tbl.s-bill { background: var(--amber-soft); border-color: var(--amber); } .tbl.s-help { background: var(--red-soft); border-color: var(--red); }
+.legend { display: flex; gap: 8px; flex-wrap: wrap; }
+.floorgrid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 12px; height: 100%; }
+
+.laptop { width: 100%; max-width: 940px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: hidden; box-shadow: var(--shadow); }
+.lbar { display: flex; align-items: center; gap: 6px; padding: 10px 14px; background: var(--panel2); border-bottom: 1px solid var(--line); }
+.lbar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
+.lbar .url { margin-left: 10px; font-size: 12px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); border-radius: 99px; padding: 2px 12px; }
+.lbody { display: grid; grid-template-columns: 168px minmax(0, 1fr); min-height: 560px; }
+.lnav { border-right: 1px solid var(--line); padding: 12px 8px; display: grid; gap: 2px; align-content: start; background: var(--panel2); }
+.lnav .who { padding: 4px 10px 12px; display: flex; gap: 8px; align-items: center; font-weight: 600; font-size: 13px; }
+.lnav .who .logo { width: 28px; height: 28px; border-radius: 8px; font-size: 12px; }
+.lnav button { text-align: left; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: var(--muted); }
+.lnav button.on { background: var(--panel); color: var(--fg); font-weight: 600; box-shadow: 0 0 0 1px var(--line); }
+.lmain { padding: 18px; min-width: 0; display: grid; gap: 16px; align-content: start; overflow-x: auto; }
+.lmain h2 { font-size: 22px; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.kpi { border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 2px; }
+.kpi b { font-family: var(--font-display); font-size: 30px; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.chart { border: 1px solid var(--line); border-radius: 12px; padding: 12px; display: grid; gap: 6px; min-width: 0; }
+.chart h3 { font-size: 15px; }
+.chart svg { width: 100%; height: auto; display: block; }
+.chart .bar-r { fill: var(--line); } .chart .bar-r.hi { fill: var(--brand); }
+.chart .ax { fill: var(--muted); font-size: 10px; } .chart .val { fill: var(--fg); font-size: 10px; font-weight: 600; }
+.chart .ln { fill: none; stroke: var(--brand); stroke-width: 2; } .chart .ar { fill: var(--brand); opacity: .14; }
+.hbar { display: grid; grid-template-columns: 110px 1fr 36px; gap: 8px; align-items: center; font-size: 12px; }
+.hbar i { display: block; height: 10px; border-radius: 5px; background: var(--brand); }
+.tbl-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.t th { text-align: left; font-weight: 500; color: var(--muted); font-size: 12px; background: var(--panel2); }
+table.t th, table.t td { padding: 9px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+table.t tr:last-child td { border-bottom: 0; }
+.formgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; align-items: start; }
+.canvas { position: relative; height: 380px; background: var(--panel2); border: 1px dashed var(--line); border-radius: 12px; touch-action: none; }
+.canvas .tbl { cursor: grab; } .canvas .tbl:active { cursor: grabbing; }
+.qrgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.qrgrid .card { justify-items: center; text-align: center; }
+.swatches { display: flex; gap: 8px; }
+.swatches button { width: 32px; height: 32px; border-radius: 50%; border: 3px solid var(--panel); box-shadow: 0 0 0 1px var(--line); }
+.swatches button.on { box-shadow: 0 0 0 2px var(--fg); }
+.rev { border-bottom: 1px solid var(--line); padding: 10px 0; display: grid; gap: 2px; }
+.bignum { font-family: var(--font-display); font-size: 48px; font-weight: 700; line-height: 1; }
+.wiz { display: flex; gap: 8px; }
+.wiz span { flex: 1; padding: 8px 10px; border-radius: 10px; background: var(--panel2); font-size: 13px; color: var(--muted); }
+.wiz span.on { background: var(--fg); color: var(--bg); }
+.plans { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.plan { border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 8px; }
+.plan.mid { border-color: var(--brand); box-shadow: 0 0 0 1px var(--brand); }
+.plan ul { margin: 0; padding-left: 18px; font-size: 13px; }
+
+@media (max-width: 1060px) {
+  .stage { grid-template-columns: minmax(0, 1fr); }
+  .notes { position: static; }
+  .fgroup { align-items: stretch; flex-direction: column; gap: 4px; }
+  .fgroup > .lab { width: auto; }
+  .fsteps { flex: none; width: 100%; }
+}
+@media (max-width: 720px) {
+  .lbody { grid-template-columns: minmax(0, 1fr); }
+  .lnav { border-right: 0; border-bottom: 1px solid var(--line); grid-auto-flow: column; overflow-x: auto; }
+  .lnav .who { display: none; }
+  .lnav button { white-space: nowrap; }
+  .two, .floorgrid { grid-template-columns: minmax(0, 1fr); }
+  .tablet { height: 560px; }
+  .kcols { grid-template-columns: repeat(3, minmax(170px, 1fr)); }
+  .bar .where { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="app">
+  <header class="top">
+    <div class="brandmark"><b>TableFlow</b><span class="muted sm">working name</span></div>
+    <div class="row">
+      <span class="pill">Prototype · sample data · nothing is saved</span>
+      <button class="btn ghost sm" data-act="reset">Reset demo</button>
+    </div>
+  </header>
+  <nav class="flow" aria-label="Prototype screens">
+    <div class="fgroup"><span class="lab">Guest and floor journey</span><div class="fsteps" id="navFlow"></div></div>
+    <div class="fgroup"><span class="lab">Back office</span><div class="fsteps" id="navBack"></div></div>
+  </nav>
+  <div class="stage">
+    <section id="screen" aria-live="polite"></section>
+    <aside class="notes" id="notes"></aside>
+  </div>
+</div>
+<div class="bar"><div><button class="btn ghost" id="prev" data-act="prev">Back</button><span class="where" id="where"></span><button class="btn" id="next" data-act="next">Next</button></div></div>
+<div id="toast" role="status"></div>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s);
+const rs = (n) => 'Rs ' + Math.round(n).toLocaleString('en-US');
+const mmss = (s) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+
+const I = {
+  plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>', check: '<path d="M5 13l4 4L19 7"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>', bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/>',
+  receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>', napkin: '<path d="M4 6h16v12H4zM4 10h16M9 6v12"/>',
+  star: '<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>', user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', mail: '<path d="M3 6h18v12H3zM3 7l9 7 9-7"/>', card: '<path d="M3 6h18v12H3zM3 10h18"/>',
+};
+const ic = (n, s = 18) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="${n === 'star' ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${I[n]}</svg>`;
+
+// A fixed pseudo-QR so every table looks different. Not scannable, it only stands in for the real code.
+function qrSvg(seed, size) {
+  const n = 21; let s = seed * 9301 + 49297; const rnd = () => ((s = (s * 9301 + 49297) % 233280) / 233280);
+  // The three corner squares: a 7x7 ring with a 3x3 centre, and a blank ring around them.
+  const corner = (x, y) => {
+    for (const [cx, cy] of [[0, 0], [n - 7, 0], [0, n - 7]]) {
+      const fx = x - cx, fy = y - cy;
+      if (fx >= -1 && fx <= 7 && fy >= -1 && fy <= 7) return fx >= 0 && fx <= 6 && fy >= 0 && fy <= 6 && (fx === 0 || fx === 6 || fy === 0 || fy === 6 || (fx >= 2 && fx <= 4 && fy >= 2 && fy <= 4));
+    }
+    return null;
+  };
+  let r = '';
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
+    const c = corner(x, y), on = c === null ? rnd() > 0.52 : c;
+    if (on) r += `<rect x="${x}" y="${y}" width="1" height="1"/>`;
+  }
+  return `<svg viewBox="-1 -1 ${n + 2} ${n + 2}" width="${size}" height="${size}" fill="#111" role="img" aria-label="Sample QR code for table ${seed}"><rect x="-1" y="-1" width="${n + 2}" height="${n + 2}" fill="#fff"/>${r}</svg>`;
+}
+
+/* ---------- sample data ---------- */
+const MENU = [
+  { id: 'seekh', cat: 'Starters', name: 'Seekh Kebab', desc: 'Minced lamb skewers from the clay oven', price: 450, spice: 'Medium', al: [], st: 'Tandoor', hue: 20 },
+  { id: 'tikka', cat: 'Starters', name: 'Paneer Tikka', desc: 'Marinated cottage cheese, charred', price: 380, spice: 'Mild', al: ['Dairy'], st: 'Tandoor', hue: 45 },
+  { id: 'makhani', cat: 'Mains', name: 'Paneer Makhani', desc: 'Paneer in a rich tomato and butter gravy', price: 520, sizes: { Half: 520, Full: 880 }, spice: 'Medium', al: ['Dairy', 'Nuts'], st: 'Curry', hue: 10 },
+  { id: 'dal', cat: 'Mains', name: 'Dal Tadka', desc: 'Yellow lentils with a garlic tempering', price: 340, sizes: { Half: 340, Full: 600 }, spice: 'Mild', al: ['Dairy'], st: 'Curry', hue: 40 },
+  { id: 'biryani', cat: 'Mains', name: 'Veg Biryani', desc: 'Fragrant rice layered with vegetables', price: 420, spice: 'Hot', al: ['Dairy'], st: 'Curry', hue: 95 },
+  { id: 'naan', cat: 'Breads', name: 'Butter Naan', desc: 'Soft naan brushed with butter', price: 80, spice: '', al: ['Dairy', 'Gluten'], st: 'Tandoor', hue: 35 },
+  { id: 'garlic', cat: 'Breads', name: 'Garlic Naan', desc: 'Naan with garlic and coriander', price: 100, spice: '', al: ['Dairy', 'Gluten'], st: 'Tandoor', hue: 60 },
+  { id: 'lassi', cat: 'Drinks', name: 'Mango Lassi', desc: 'Chilled yoghurt and mango', price: 180, spice: '', al: ['Dairy'], st: 'Drinks', hue: 50 },
+  { id: 'chai', cat: 'Drinks', name: 'Masala Chai', desc: 'Spiced milk tea', price: 90, spice: '', al: ['Dairy'], st: 'Drinks', hue: 25 },
+  { id: 'limesoda', cat: 'Drinks', name: 'Fresh Lime Soda', desc: 'Sweet or salted', price: 120, spice: '', al: [], st: 'Drinks', hue: 120 },
+];
+const STAFF = ['Aman', 'Sara', 'Bilal'];
+const initial = () => ({
+  screen: 'scan', cat: 'All', filter: new Set(), sheet: null, shSize: null, shQty: 1,
+  brand: { name: 'Spice Garden', color: '#0e7a53', service: 5, tax: 10, currency: 'Rs' },
+  cart: [{ id: 'makhani', size: 'Half', qty: 1, note: '' }, { id: 'naan', size: '', qty: 2, note: '' }, { id: 'lassi', size: '', qty: 2, note: '' }],
+  placed: false, sent: false, edit: false, rejected: false, eta: 712,
+  K: [
+    { id: 'a', t: 2, o: 2038, st: 'Tandoor', items: ['1 × Seekh Kebab'], sec: 760, target: 600 },
+    { id: 'b', t: 3, o: 2039, st: 'Curry', items: ['1 × Dal Tadka (Full)'], sec: 250, target: 900 },
+    { id: 'c', t: 1, o: 2040, st: 'Drinks', items: ['2 × Masala Chai'], sec: 95, target: 300 },
+  ],
+  R: [{ id: 'r2', t: 2, kind: 'Water', age: 80, status: 'open', who: '' }],
+  callKind: null, selTable: 5,
+  layout: [
+    { n: 1, x: 14, y: 20, s: 'eating', round: 0 }, { n: 2, x: 40, y: 20, s: 'ordering', round: 0 }, { n: 3, x: 66, y: 20, s: 'bill', round: 0 }, { n: 4, x: 88, y: 20, s: 'free', round: 1 },
+    { n: 5, x: 14, y: 62, s: 'help', round: 1 }, { n: 6, x: 40, y: 62, s: 'eating', round: 1 }, { n: 7, x: 66, y: 62, s: 'free', round: 0 }, { n: 8, x: 88, y: 62, s: 'ordering', round: 0 },
+  ],
+  split: 2, tip: 10, method: 'Card', paid: false,
+  stars: 0, comment: '', reviewPosted: false, email: 'guest@example.com',
+  sold: new Set(['limesoda']), extra: [],
+  wiz: 1, wizName: 'Karak Corner', wizDone: false, plat: 'restaurants',
+  rests: [['Spice Garden', 'Lahore', 8, 'Growth', 'Active'], ['Café Noor', 'Karachi', 14, 'Growth', 'Active'], ['Saffron Table', 'Islamabad', 6, 'Starter', 'Trial']],
+  staffRoles: { Ayesha: 'Owner', Aman: 'Waiter', Sara: 'Waiter', Bilal: 'Kitchen' },
+  reviewsSample: [[5, 'Quick service, the lassi was perfect.', 'T2', 'Yesterday'], [4, 'Food was great, bill took a while.', 'T6', 'Yesterday'], [5, 'Loved scanning to order. No waiting for the menu.', 'T1', '2 days ago'], [3, 'Naan arrived cold.', 'T3', '2 days ago']],
+});
+let S = initial();
+
+const dish = (id) => MENU.find((d) => d.id === id);
+const unit = (l) => { const d = dish(l.id); return d.sizes ? d.sizes[l.size] : d.price; };
+const sub = () => S.cart.reduce((t, l) => t + unit(l) * l.qty, 0);
+const count = () => S.cart.reduce((t, l) => t + l.qty, 0);
+const bill = () => { const s = sub(), svc = Math.round(s * S.brand.service / 100), tax = Math.round((s + svc) * S.brand.tax / 100), tip = Math.round(s * S.tip / 100); return { s, svc, tax, tip, total: s + svc + tax + tip }; };
+const lineName = (l) => dish(l.id).name + (l.size ? ` (${l.size})` : '');
+const initials = (n) => n.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+const brandStyle = () => `--brand:${S.brand.color}`;
+
+/* ---------- device frames ---------- */
+const rh = () => `<div class="rh"><div class="logo">${initials(S.brand.name)}</div><div><b>${S.brand.name}</b><div class="muted sm">Table 5</div></div><span class="pill sp">Dine-in</span></div>`;
+const ph = (inner) => `<div class="phone" style="${brandStyle()}"><div class="pn"></div><div class="scr">${inner}</div></div>`;
+const tablet = (title, tabs, body, cls = '') => `<div class="tablet ${cls}" style="${brandStyle()}"><div class="thead"><div class="logo" style="width:28px;height:28px;font-size:12px">${initials(S.brand.name)}</div><h3>${title}</h3><span class="grow"></span>${tabs || ''}</div><div class="tbody">${body}</div></div>`;
+const OWNER_NAV = [['overview', 'Overview'], ['menu-admin', 'Menu'], ['floor-layout', 'Floor layout'], ['qr-codes', 'QR codes'], ['reviews', 'Reviews'], ['staff', 'Staff and roles'], ['branding', 'Branding']];
+const owner = (active, body) => `<div class="laptop" style="${brandStyle()}"><div class="lbar"><i></i><i></i><i></i><span class="url">spicegarden.tableflow.app/owner</span></div><div class="lbody"><nav class="lnav"><div class="who"><div class="logo">${initials(S.brand.name)}</div>${S.brand.name}</div>${OWNER_NAV.map(([id, l]) => `<button data-act="go" data-arg="${id}" class="${id === active ? 'on' : ''}">${l}</button>`).join('')}</nav><div class="lmain">${body}</div></div></div>`;
+
+/* ---------- charts ---------- */
+function barChart(vals, labels, label) {
+  const W = 320, H = 150, max = Math.max(...vals), bw = (W - 24) / vals.length, hi = vals.indexOf(max);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">${vals.map((v, i) => { const h = (H - 44) * v / max, x = 12 + i * bw + bw * .16; return `<rect class="bar-r ${i === hi ? 'hi' : ''}" x="${x}" y="${H - 24 - h}" width="${bw * .68}" height="${h}" rx="3"/><text class="val" x="${x + bw * .34}" y="${H - 28 - h}" text-anchor="middle">${v}</text><text class="ax" x="${x + bw * .34}" y="${H - 8}" text-anchor="middle">${labels[i]}</text>`; }).join('')}</svg>`;
+}
+function areaChart(vals, labels, label) {
+  const W = 320, H = 150, max = Math.max(...vals), step = (W - 28) / (vals.length - 1);
+  const pts = vals.map((v, i) => [14 + i * step, H - 26 - (H - 50) * v / max]);
+  const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const pk = vals.indexOf(max);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}"><path class="ar" d="${line} L${pts.at(-1)[0]} ${H - 26} L${pts[0][0]} ${H - 26}Z"/><path class="ln" d="${line}"/><circle cx="${pts[pk][0]}" cy="${pts[pk][1]}" r="4" fill="var(--brand)"/><text class="val" x="${pts[pk][0]}" y="${pts[pk][1] - 9}" text-anchor="middle">${max}</text>${labels.map((l, i) => (i % 2 === 0 ? `<text class="ax" x="${pts[i][0]}" y="${H - 8}" text-anchor="middle">${l}</text>` : '')).join('')}</svg>`;
+}
+
+/* ---------- screens ---------- */
+const dishCard = (d) => { const out = S.sold.has(d.id); return `<button class="dish ${out ? 'out' : ''}" ${out ? 'disabled' : `data-act="dish" data-arg="${d.id}"`}><span class="tile" style="--h:${d.hue}">${initials(d.name)}</span><span class="dbody"><span class="drow"><b>${d.name}</b><span class="num">${d.sizes ? 'from ' + rs(Math.min(...Object.values(d.sizes))) : rs(d.price)}</span></span><span class="muted sm">${d.desc}</span><span class="tags">${d.spice ? `<i class="tag ${d.spice === 'Hot' ? 'hot' : ''}">${d.spice}</i>` : ''}${d.al.map((a) => `<i class="tag al">${a}</i>`).join('')}${out ? '<i class="tag so">Sold out</i>' : ''}</span></span></button>`; };
+
+function sheetHtml() {
+  const d = dish(S.sheet), sizes = d.sizes ? Object.keys(d.sizes) : [], p = d.sizes ? d.sizes[S.shSize] : d.price;
+  const pairs = ['naan', 'lassi'].filter((id) => id !== d.id).map(dish);
+  return `<div class="shade" data-act="close"></div><div class="sheet"><button class="x" data-act="close" aria-label="Close">${ic('x', 16)}</button>
+    <div class="tile big" style="--h:${d.hue}">${initials(d.name)}</div><h3>${d.name}</h3><p class="muted">${d.desc}</p>
+    <div class="tags">${d.spice ? `<i class="tag ${d.spice === 'Hot' ? 'hot' : ''}">${d.spice}</i>` : ''}${d.al.map((a) => `<i class="tag al">Contains ${a}</i>`).join('')}</div>
+    ${sizes.length ? `<div class="seg">${sizes.map((s) => `<button data-act="shsize" data-arg="${s}" class="${S.shSize === s ? 'on' : ''}">${s} · ${rs(d.sizes[s])}</button>`).join('')}</div>` : ''}
+    <div class="pair"><b>Goes well with</b>${pairs.map((x) => `<div class="spread"><span>${x.name} <span class="muted">+${rs(x.price)}</span></span><button class="btn ghost sm" data-act="quick" data-arg="${x.id}">${ic('plus', 14)} Add</button></div>`).join('')}</div>
+    ${d.id === 'makhani' ? `<div class="combo"><b>Makhani meal</b><span class="sm">Full Makhani, 2 Butter Naan and a Mango Lassi</span><div class="spread"><span><b>${rs(1130)}</b> <s class="muted">${rs(1220)}</s> · save ${rs(90)}</span><button class="btn sm" data-act="combo">Add combo</button></div></div>` : ''}
+    <div class="row"><div class="qty"><button data-act="shqty" data-arg="-1" aria-label="Fewer">${ic('minus', 14)}</button><span>${S.shQty}</span><button data-act="shqty" data-arg="1" aria-label="More">${ic('plus', 14)}</button></div><button class="btn grow" data-act="addsheet">Add to order · ${rs(p * S.shQty)}</button></div></div>`;
+}
+
+const SCREENS = {
+  scan() {
+    return `<div class="devices">${ph(`<div class="cam"><div>Point your camera at the QR code on your table</div><div class="vf">${qrSvg(5, 168)}</div><button class="btn" data-act="go" data-arg="menu">Simulate scan</button><div class="sm" style="opacity:.7">Opens in the browser. No app, no login.</div></div>`)}
+      <div class="tent"><div style="border-radius:10px;overflow:hidden;border:1px solid var(--line)">${qrSvg(5, 190)}</div><b>Scan to order</b><span>Table 5 · ${S.brand.name}</span><span class="muted sm">Each table has its own code</span></div></div>`;
+  },
+  menu() {
+    const cats = ['All', 'Starters', 'Mains', 'Breads', 'Drinks'];
+    const vis = MENU.filter((d) => (S.cat === 'All' || d.cat === S.cat) && !d.al.some((a) => S.filter.has(a)));
+    const hidden = MENU.filter((d) => d.al.some((a) => S.filter.has(a))).length;
+    return `<div class="devices">${ph(`${rh()}
+      <div class="tabs">${cats.map((c) => `<button data-act="cat" data-arg="${c}" class="${S.cat === c ? 'on' : ''}">${c}</button>`).join('')}</div>
+      <div class="fl"><span>Avoid</span>${['Dairy', 'Nuts', 'Gluten'].map((a) => `<button data-act="filt" data-arg="${a}" class="chip ${S.filter.has(a) ? 'on' : ''}">${a}</button>`).join('')}</div>
+      ${hidden ? `<div class="hint">${hidden} dishes hidden because of what you avoid</div>` : ''}
+      <div class="scroll">${vis.map(dishCard).join('') || '<div class="muted center">Nothing matches. Clear a filter.</div>'}</div>
+      <div class="pfoot"><button class="btn wide" data-act="go" data-arg="order">View order · ${count()} items · ${rs(sub())}</button></div>
+      ${S.sheet ? sheetHtml() : ''}`)}</div>`;
+  },
+  order() {
+    if (S.placed) {
+      return `<div class="devices">${ph(`${rh()}<div class="scroll"><div class="ok-ring">${ic('check', 30)}</div><div class="center"><h3>Order placed</h3><span class="muted">#2041 · Table 5 · sent to the waiter</span></div>
+        <div class="card">${S.cart.map((l) => `<div class="spread"><span>${l.qty} × ${lineName(l)}</span><span class="num">${rs(unit(l) * l.qty)}</span></div>${l.note ? `<div class="sm muted">Note: ${l.note}</div>` : ''}`).join('')}</div></div>
+        <div class="pfoot"><button class="btn wide" data-act="go" data-arg="kitchen">Next: the staff and kitchen side</button></div>`)}</div>`;
+    }
+    const b = bill();
+    return `<div class="devices">${ph(`${rh()}<div class="scroll"><h3>Your order</h3>
+      ${S.cart.map((l, i) => `<div class="line"><div class="spread"><b>${lineName(l)}</b><span class="num">${rs(unit(l) * l.qty)}</span></div>
+        <div class="spread"><div class="qty"><button data-act="qty" data-arg="${i}:-1" aria-label="Fewer">${ic('minus', 14)}</button><span>${l.qty}</span><button data-act="qty" data-arg="${i}:1" aria-label="More">${ic('plus', 14)}</button></div></div>
+        <input class="note" id="note-${i}" data-in="note" data-i="${i}" placeholder="Add a note, for example no onions" value="${l.note}"></div>`).join('')}
+      <button class="btn ghost" data-act="go" data-arg="menu">${ic('plus', 14)} Add more dishes</button>
+      <div class="sum"><div class="spread"><span class="muted">Subtotal</span><span class="num">${rs(b.s)}</span></div><div class="sm muted">Service charge and tax are added on the bill.</div></div></div>
+      <div class="pfoot"><button class="btn wide" data-act="place" ${S.cart.length ? '' : 'disabled'}>Place order · ${rs(b.s)}</button></div>`)}</div>`;
+  },
+  kitchen() {
+    const groups = {};
+    S.K.forEach((t) => { (groups[t.o] ||= { t: t.t, o: t.o, st: [] }).st.push(t.st); });
+    const newCard = S.rejected
+      ? `<div class="ticket" style="border-left-color:var(--red)"><div class="spread"><b>Table 5 · #2041</b><span class="st help">Rejected</span></div><span class="muted">Guest was told the order could not be taken.</span><div><button class="btn ghost sm" data-act="undoreject">Undo</button></div></div>`
+      : S.sent ? '' : `<div class="ticket" style="border-left-color:var(--blue)"><div class="spread"><b>Table 5 · #2041</b><span class="st ordering">New</span></div>
+        <ul style="list-style:none;padding:0;display:grid;gap:4px">${S.cart.map((l, i) => `<li class="spread"><span>${S.edit ? `<span class="qty"><button data-act="qty" data-arg="${i}:-1" aria-label="Fewer">${ic('minus', 12)}</button><span>${l.qty}</span><button data-act="qty" data-arg="${i}:1" aria-label="More">${ic('plus', 12)}</button></span> ` : l.qty + ' × '}${lineName(l)}${l.note ? ` <i class="tag al">${l.note}</i>` : ''}</span><span class="muted sm">${dish(l.id).st}</span></li>`).join('')}</ul>
+        <div class="row"><button class="btn ghost sm" data-act="edit">${S.edit ? 'Done editing' : 'Edit order'}</button><button class="btn red sm" data-act="reject">Reject</button><span class="grow"></span><button class="btn sm" data-act="send">Send to kitchen</button></div></div>`;
+    const cooking = Object.values(groups).map((g) => `<div class="ticket"><div class="spread"><b>Table ${g.t} · #${g.o}</b><span class="st eating">${g.st.length > 1 ? 'Cooking' : 'Cooking · ' + g.st[0]}</span></div></div>`).join('');
+    const staffTab = tablet('Orders', `<span class="pill">New ${S.sent || S.rejected ? 0 : 1}</span><span class="pill">In kitchen ${Object.keys(groups).length}</span>`, `${newCard || '<div class="muted center">No new orders</div>'}<div class="muted sm">In the kitchen</div>${cooking}`);
+    const cols = ['Tandoor', 'Curry', 'Drinks'].map((st) => { const ts = S.K.filter((t) => t.st === st); return `<div class="kcol"><h4>${st} <span class="muted">${ts.length}</span></h4>${ts.map((t) => `<div class="ticket ${t.sec > t.target ? 'late' : ''}" data-tk="${t.id}"><div class="spread"><b>T${t.t} · #${t.o}</b><span class="timer ${t.sec > t.target ? 'late' : ''}" data-k="${t.id}">${mmss(t.sec)}</span></div><ul>${t.items.map((x) => `<li>${x}</li>`).join('')}</ul>${t.sec > t.target ? '<div class="sm" style="color:var(--red)">Over target time</div>' : ''}<button class="btn sm" data-act="kready" data-arg="${t.id}">Ready</button></div>`).join('') || '<div class="muted sm">Nothing to cook</div>'}</div>`; }).join('');
+    return `<div class="devices">${staffTab}<div class="kds"><div class="thead" style="border-color:var(--line)"><h3>Kitchen display</h3><span class="grow"></span><span class="pill">${S.K.length} tickets</span></div><div class="kcols">${cols}</div></div></div>`;
+  },
+  wait() {
+    const lock = (l) => dish(l.id).st !== 'Drinks';
+    return `<div class="devices">${ph(`${rh()}<div class="scroll">
+      <div class="card"><div class="spread"><b>Order #2041</b><span class="st eating">Cooking</span></div>
+        <div class="steps"><div class="on"><i></i>Placed</div><div class="on"><i></i>Cooking</div><div><i></i>Ready</div><div><i></i>Served</div></div>
+        <div class="center"><span class="muted sm">Estimated time left</span><span class="bigtime" data-eta>${mmss(S.eta)}</span></div>
+        <div class="banner">${ic('clock', 14)} The kitchen is busy right now. We added about 4 minutes.</div></div>
+      <div class="card"><b>Your items</b>${S.cart.length ? S.cart.map((l, i) => `<div class="spread"><span>${l.qty} × ${lineName(l)}</span>${lock(l) ? '<span class="muted sm">Cooking</span>' : `<button class="btn red sm" data-act="cancel" data-arg="${i}">Cancel</button>`}</div>`).join('') : '<span class="muted">No items left on this order.</span>'}<span class="muted sm">You can cancel an item until the kitchen starts it.</span></div>
+      <button class="btn ghost" data-act="go" data-arg="menu">${ic('plus', 14)} Add more items</button></div>
+      <div class="pfoot"><button class="btn wide" data-act="go" data-arg="call">Next: call the waiter</button></div>`)}</div>`;
+  },
+  call() {
+    const mine = S.R.find((r) => r.id === 'r5');
+    const kinds = [['Water', 'drop'], ['Napkins', 'napkin'], ['Bill', 'receipt'], ['Call waiter', 'bell']];
+    const phone = ph(`${rh()}<div class="scroll"><h3>Need something?</h3><div class="call4">${kinds.map(([k, i]) => `<button data-act="callk" data-arg="${k}" class="${S.callKind === k ? 'on' : ''}">${ic(i, 26)}${k}</button>`).join('')}</div>
+      ${mine ? `<div class="card"><div class="spread"><b>${mine.kind}</b><span class="st ${mine.status === 'open' ? 'help' : 'eating'}">${mine.status === 'open' ? 'Sent to staff' : 'On the way'}</span></div><span class="muted">${mine.status === 'open' ? 'Your waiter has been alerted.' : (mine.who || 'Aman') + ' is coming to Table 5. Arriving in about 8 seconds.'}</span></div>` : ''}</div>
+      <div class="pfoot"><button class="btn wide" data-act="go" data-arg="floor">Next: the floor map</button></div>`);
+    const tab = tablet('Service requests', `<span class="pill">${S.R.length} open</span>`, S.R.length ? S.R.map((r) => `<div class="ticket" style="border-left-color:${r.status === 'open' ? 'var(--red)' : 'var(--brand)'}"><div class="spread"><b>Table ${r.t} · ${r.kind}</b><span class="muted sm">${r.age < 60 ? r.age + ' s' : Math.floor(r.age / 60) + ' min'} ago</span></div>
+      <div class="row"><select id="as-${r.id}" data-in="assign" data-id="${r.id}" aria-label="Assign to">${['Unassigned', ...STAFF].map((s) => `<option ${((r.who || 'Unassigned') === s) ? 'selected' : ''}>${s}</option>`).join('')}</select>${r.status === 'ack' ? '<span class="sm muted">Responded in 8 s</span>' : ''}<span class="grow"></span>${r.status === 'open' ? `<button class="btn ghost sm" data-act="rack" data-arg="${r.id}">On my way</button>` : ''}<button class="btn sm" data-act="rdone" data-arg="${r.id}">Done</button></div></div>`).join('') : '<div class="muted center">No open requests</div>');
+    return `<div class="devices">${phone}${tab}</div>`;
+  },
+  floor() {
+    const t = S.layout.find((x) => x.n === S.selTable) || S.layout[0];
+    const orderTxt = { 5: 'Makhani (Half), 2 × Butter Naan, 2 × Mango Lassi', 1: '2 × Seekh Kebab, 1 × Veg Biryani', 3: 'Bill requested · Rs 2,140', 2: 'Browsing the menu', 6: '1 × Dal Tadka (Full), 3 × Garlic Naan', 8: 'Cart open, no order yet' }[t.n] || 'No active order';
+    const req = t.n === 5 ? S.R.find((r) => r.id === 'r5') : t.s === 'bill' ? { kind: 'Bill' } : null;
+    const map = `<div class="map">${S.layout.map((x) => `<button class="tbl s-${x.s} ${x.round ? 'round' : ''} ${x.n === t.n ? 'sel' : ''}" style="left:${x.x}%;top:${x.y}%" data-act="seltable" data-arg="${x.n}" aria-label="Table ${x.n}, ${x.s}">T${x.n}<small>${x.s}</small></button>`).join('')}</div>`;
+    const side = `<div class="card"><div class="spread"><b style="font-size:16px">Table ${t.n}</b><span class="st ${t.s}">${t.s}</span></div><div class="muted sm">Order</div><div>${orderTxt}</div>${req ? `<div class="muted sm">Request</div><div>${req.kind}${req.status === 'ack' ? ' · on the way' : ''}</div>` : ''}<div class="muted sm">Assigned to</div><div class="seg">${STAFF.map((s) => `<button data-act="assignf" data-arg="${s}" class="${(S.assigned?.[t.n] || (t.n === 5 ? 'Aman' : '')) === s ? 'on' : ''}">${s}</button>`).join('')}</div></div>`;
+    return `<div class="devices">${tablet('Floor map · live', `<div class="legend"><span class="st eating">Eating</span><span class="st ordering">Ordering</span><span class="st bill">Bill</span><span class="st help">Help</span><span class="st free">Free</span></div>`, `<div class="floorgrid">${map}<div>${side}</div></div>`, 'wide')}</div>`;
+  },
+  pay() {
+    const b = bill(), per = Math.ceil(b.total / S.split);
+    const phone = ph(`${rh()}<div class="scroll">
+      ${S.paid ? `<div class="ok-ring">${ic('check', 30)}</div><div class="center"><h3>Payment recorded</h3><span class="muted">${S.method} · ${rs(per)} per person</span></div>` : ''}
+      <div class="card"><b>Your bill</b>${S.cart.map((l) => `<div class="spread"><span>${l.qty} × ${lineName(l)}</span><span class="num">${rs(unit(l) * l.qty)}</span></div>`).join('')}
+        <div class="sum"><div class="spread"><span class="muted">Subtotal</span><span class="num">${rs(b.s)}</span></div><div class="spread"><span class="muted">Service charge ${S.brand.service}%</span><span class="num">${rs(b.svc)}</span></div><div class="spread"><span class="muted">Tax ${S.brand.tax}%</span><span class="num">${rs(b.tax)}</span></div><div class="spread"><span class="muted">Tip ${S.tip}%</span><span class="num">${rs(b.tip)}</span></div><div class="spread t"><span>Total</span><span class="num">${rs(b.total)}</span></div></div></div>
+      <div class="card"><b>Split the bill</b><div class="spread"><div class="qty"><button data-act="split" data-arg="-1" aria-label="Fewer people">${ic('minus', 14)}</button><span>${S.split}</span><button data-act="split" data-arg="1" aria-label="More people">${ic('plus', 14)}</button></div><span>${S.split} ways · <b class="num">${rs(per)}</b> each</span></div></div>
+      <div class="card"><b>Tip</b><div class="seg">${[0, 5, 10, 15].map((p) => `<button data-act="tip" data-arg="${p}" class="${S.tip === p ? 'on' : ''}">${p ? p + '%' : 'No tip'}</button>`).join('')}<button data-act="tip" data-arg="20" class="${S.tip === 20 ? 'on' : ''}">Custom 20%</button></div></div>
+      <div class="card"><b>Pay by</b><div class="seg">${['Cash', 'Bank transfer', 'Card', 'Mobile wallet'].map((m) => `<button data-act="method" data-arg="${m}" class="${S.method === m ? 'on' : ''}">${m}</button>`).join('')}</div></div></div>
+      <div class="pfoot"><button class="btn wide" data-act="${S.paid ? 'go' : 'pay'}" data-arg="review">${S.paid ? 'Next: receipt and review' : 'Pay ' + rs(per)}</button></div>`);
+    const tab = tablet('Table 5 · Bill', `<span class="st ${S.paid ? 'eating' : 'bill'}">${S.paid ? 'Paid' : 'Waiting for payment'}</span>`, `<div class="card"><div class="spread"><b>Total</b><b class="num">${rs(b.total)}</b></div><div class="muted sm">Split ${S.split} ways · ${rs(per)} each · ${S.method}</div>${S.paid ? `<span class="muted">Payment recorded. Table 5 is reset and free for the next guests.</span>` : `<div class="row"><span class="muted sm">Guest chose ${S.method}</span><span class="grow"></span><button class="btn sm" data-act="markpaid">Mark paid and reset table</button></div>`}</div>`);
+    return `<div class="devices">${phone}${tab}</div>`;
+  },
+  review() {
+    const b = bill();
+    return `<div class="devices">${ph(`${rh()}<div class="scroll">
+      <div class="card"><div class="spread"><b>Receipt</b><span class="muted sm">${ic('mail', 14)} Sent</span></div><div class="muted sm">${S.brand.name} · Table 5 · #2041</div>${S.cart.map((l) => `<div class="spread"><span>${l.qty} × ${lineName(l)}</span><span class="num">${rs(unit(l) * l.qty)}</span></div>`).join('')}<div class="spread t sum"><span>Total paid</span><span class="num">${rs(b.total)}</span></div><label class="f">Receipt sent to<input id="email" data-in="email" value="${S.email}" type="email"></label></div>
+      ${S.reviewPosted ? `<div class="card center"><div class="ok-ring" style="margin:4px">${ic('check', 26)}</div><b>Review posted</b><span class="muted">Thank you. The owner can read it now.</span></div>` : `<div class="card center"><b>How was your meal?</b><div class="stars">${[1, 2, 3, 4, 5].map((n) => `<button data-act="star" data-arg="${n}" class="${S.stars >= n ? 'on' : ''}" aria-label="${n} star${n > 1 ? 's' : ''}">${ic('star', 34)}</button>`).join('')}</div><textarea id="comment" data-in="comment" rows="3" placeholder="Anything we should know? (optional)">${S.comment}</textarea><button class="btn wide" data-act="post">Post review</button></div>`}</div>
+      <div class="pfoot"><button class="btn wide" data-act="go" data-arg="overview">Next: the owner's view</button></div>`)}</div>`;
+  },
+  overview() {
+    const sales = [31.2, 28.4, 33.9, 36.1, 48.5, 62.3, 55.0], days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const hrs = [4, 9, 14, 8, 5, 6, 11, 19, 24, 17, 8], hl = ['12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22'];
+    const best = [['Butter Naan', 214], ['Paneer Makhani', 128], ['Mango Lassi', 96], ['Veg Biryani', 74], ['Seekh Kebab', 61]];
+    return owner('overview', `<div class="spread"><h2>Tonight</h2><span class="pill">Live · sample data</span></div>
+      <div class="kpis"><div class="kpi"><span class="muted sm">Tables in use</span><b>6 / 8</b></div><div class="kpi"><span class="muted sm">Orders today</span><b>42</b></div><div class="kpi"><span class="muted sm">Sales today</span><b>Rs 48.5k</b></div><div class="kpi"><span class="muted sm">Avg prep time</span><b>13:10</b></div></div>
+      <div class="charts"><div class="chart"><h3>Sales by day (Rs thousand)</h3>${barChart(sales, days, 'Sales by day in thousands of rupees, Saturday is highest')}</div><div class="chart"><h3>Peak hours (orders per hour)</h3>${areaChart(hrs, hl, 'Orders per hour, peak at 20:00')}</div>
+      <div class="chart"><h3>Best sellers this week</h3>${best.map(([n, v]) => `<div class="hbar"><span>${n}</span><i style="width:${v / 214 * 100}%"></i><b class="num">${v}</b></div>`).join('')}</div>
+      <div class="chart"><h3>Average prep time by station</h3>${[['Tandoor', '11:40'], ['Curry', '16:20'], ['Drinks', '03:50']].map(([n, v]) => `<div class="spread"><span>${n}</span><b class="num">${v}</b></div>`).join('')}<span class="muted sm">Target times are set per dish in the menu.</span></div></div>`);
+  },
+  'menu-admin'() {
+    const rows = [...MENU, ...S.extra];
+    return owner('menu-admin', `<div class="spread"><h2>Menu</h2><span class="muted sm">${rows.length} dishes</span></div>
+      <div class="two"><div class="tbl-wrap"><table class="t"><tr><th>Dish</th><th>Category</th><th>Station</th><th>Price</th><th>Sold out</th></tr>${rows.map((d) => `<tr><td><b>${d.name}</b></td><td>${d.cat}</td><td>${d.st}</td><td class="num">${d.sizes ? Object.values(d.sizes).map(rs).join(' / ') : rs(d.price)}</td><td><button class="toggle ${S.sold.has(d.id) ? 'on' : ''}" data-act="sold" data-arg="${d.id}" aria-label="Mark ${d.name} sold out" aria-pressed="${S.sold.has(d.id)}"></button></td></tr>`).join('')}</table></div>
+      <div class="card"><b>Add a dish</b><label class="f">Name<input id="nd-name" placeholder="Chicken Karahi"></label><label class="f">Category<select id="nd-cat"><option>Starters</option><option>Mains</option><option>Breads</option><option>Drinks</option></select></label><div class="formgrid"><label class="f">Price<input id="nd-price" placeholder="650"></label><label class="f">Prep (min)<input id="nd-prep" placeholder="18"></label></div><label class="f">Kitchen station<select id="nd-st"><option>Tandoor</option><option>Curry</option><option>Drinks</option></select></label><label class="f">Allergens<input placeholder="Dairy, Nuts"></label><label class="f">Sizes<input placeholder="Half 520, Full 880"></label><button class="btn" data-act="adddish">Save dish</button></div></div>`);
+  },
+  'floor-layout'() {
+    return owner('floor-layout', `<div class="spread"><h2>Floor layout</h2><button class="btn" data-act="toast" data-arg="Layout saved (prototype only)">Save layout</button></div><p class="muted">Drag tables to match your dining room. Staff see this layout on the live floor map.</p>
+      <div class="canvas" id="canvas">${S.layout.map((x) => `<div class="tbl ${x.round ? 'round' : ''}" data-drag="${x.n}" style="left:${x.x}%;top:${x.y}%">T${x.n}</div>`).join('')}</div>
+      <div class="row"><button class="btn ghost" data-act="addtable">${ic('plus', 14)} Add table</button><span class="muted sm">${S.layout.length} tables</span></div>`);
+  },
+  'qr-codes'() {
+    return owner('qr-codes', `<div class="spread"><h2>Table QR codes</h2><button class="btn" data-act="toast" data-arg="Prototype: no file is created">Print all</button></div><p class="muted">One code per table. Each carries a long random code, so guests cannot guess another table's link.</p>
+      <div class="qrgrid">${S.layout.map((x) => `<div class="card"><div style="border-radius:8px;overflow:hidden;border:1px solid var(--line)">${qrSvg(x.n, 112)}</div><b>Table ${x.n}</b><button class="btn ghost sm" data-act="toast" data-arg="Prototype: no file is created">Download</button></div>`).join('')}</div>`);
+  },
+  reviews() {
+    const list = [...(S.reviewPosted ? [[S.stars || 5, S.comment || 'No comment', 'T5', 'Just now']] : []), ...S.reviewsSample];
+    const avg = list.reduce((t, r) => t + r[0], 0) / list.length;
+    return owner('reviews', `<h2>Reviews</h2><div class="row" style="gap:24px;flex-wrap:wrap"><div><div class="bignum">${avg.toFixed(1)}</div><div class="stars" style="justify-content:flex-start;color:var(--amber)">${[1, 2, 3, 4, 5].map((n) => `<span style="color:${avg >= n - .25 ? 'var(--amber)' : 'var(--line)'}">${ic('star', 16)}</span>`).join('')}</div><span class="muted sm">${list.length} reviews</span></div><div class="grow" style="min-width:200px">${[5, 4, 3, 2, 1].map((n) => { const c = list.filter((r) => r[0] === n).length; return `<div class="hbar" style="grid-template-columns:24px 1fr 24px"><span>${n}</span><i style="width:${Math.max(c / list.length * 100, c ? 6 : 0)}%"></i><b>${c}</b></div>`; }).join('')}</div></div>
+      <div>${list.map(([s, t, tb, when]) => `<div class="rev"><div class="spread"><span style="color:var(--amber)">${'★'.repeat(s)}<span style="color:var(--line)">${'★'.repeat(5 - s)}</span></span><span class="muted sm">${tb} · ${when}</span></div><span>${t}</span></div>`).join('')}</div>`);
+  },
+  staff() {
+    const perms = [['Take and confirm orders', 1, 1, 0], ['Kitchen display', 1, 0, 1], ['Answer service requests', 1, 1, 0], ['Floor map and bills', 1, 1, 0], ['Menu, layout and reports', 1, 0, 0]];
+    return owner('staff', `<div class="spread"><h2>Staff and roles</h2><button class="btn" data-act="toast" data-arg="Invite sent (prototype only)">Invite staff</button></div>
+      <div class="tbl-wrap"><table class="t"><tr><th>Name</th><th>Role</th><th>Sees</th></tr>${Object.entries(S.staffRoles).map(([n, r]) => `<tr><td><b>${n}</b></td><td><select id="role-${n}" data-in="role" data-n="${n}">${['Owner', 'Waiter', 'Kitchen'].map((x) => `<option ${x === r ? 'selected' : ''}>${x}</option>`).join('')}</select></td><td class="muted">${{ Owner: 'Everything', Waiter: 'Orders, requests, floor map, bills', Kitchen: 'Kitchen display only' }[r]}</td></tr>`).join('')}</table></div>
+      <div class="tbl-wrap"><table class="t"><tr><th>Screen</th><th>Owner</th><th>Waiter</th><th>Kitchen</th></tr>${perms.map(([n, a, b, c]) => `<tr><td>${n}</td>${[a, b, c].map((v) => `<td>${v ? ic('check', 16) : '<span class="muted">-</span>'}</td>`).join('')}</tr>`).join('')}</table></div>
+      <p class="muted sm">Each restaurant's staff can only ever see that restaurant's data.</p>`);
+  },
+  branding() {
+    const colors = ['#0e7a53', '#b4440c', '#1d4ed8', '#7c2d8e', '#b91c1c'];
+    const preview = ph(`${rh()}<div class="tabs"><button class="on">All</button><button>Mains</button><button>Drinks</button></div><div class="scroll">${[MENU[2], MENU[7]].map(dishCard).join('')}</div><div class="pfoot"><button class="btn wide">View order · 2 items</button></div>`);
+    return owner('branding', `<h2>Branding and billing</h2><div class="two"><div style="display:grid;gap:12px"><label class="f">Restaurant name<input id="br-name" data-in="brname" value="${S.brand.name}"></label>
+      <div class="row"><div class="logo" style="width:56px;height:56px;font-size:20px">${initials(S.brand.name)}</div><button class="btn ghost sm" data-act="toast" data-arg="Prototype: nothing is uploaded">Upload logo</button></div>
+      <div><div class="muted sm" style="margin-bottom:6px">Brand colour</div><div class="swatches">${colors.map((c) => `<button data-act="color" data-arg="${c}" class="${S.brand.color === c ? 'on' : ''}" style="background:${c}" aria-label="Use ${c}"></button>`).join('')}</div></div>
+      <div class="formgrid"><label class="f">Currency<select id="br-cur"><option>Rs</option><option>AED</option><option>USD</option></select></label><label class="f">Service charge %<input id="br-svc" data-in="svc" value="${S.brand.service}" inputmode="numeric"></label><label class="f">Tax %<input id="br-tax" data-in="tax" value="${S.brand.tax}" inputmode="numeric"></label></div>
+      <p class="muted sm">These appear on guest pages and on every bill.</p></div><div style="justify-self:center;transform:scale(.8);transform-origin:top center;height:560px">${preview}</div></div>`);
+  },
+  platform() {
+    const tabs = [['restaurants', 'Restaurants'], ['onboard', 'Onboard a restaurant'], ['plans', 'Plans and billing']];
+    let body = '';
+    if (S.plat === 'restaurants') body = `<h2>Restaurants</h2><div class="tbl-wrap"><table class="t"><tr><th>Restaurant</th><th>City</th><th>Tables</th><th>Plan</th><th>Status</th></tr>${S.rests.map((r) => `<tr><td><b>${r[0]}</b></td><td>${r[1]}</td><td>${r[2]}</td><td>${r[3]}</td><td><span class="st ${r[4] === 'Active' ? 'eating' : r[4] === 'Trial' ? 'bill' : 'ordering'}">${r[4]}</span></td></tr>`).join('')}</table></div>`;
+    if (S.plat === 'onboard') body = S.wizDone ? `<div class="center card" style="padding:28px"><div class="ok-ring">${ic('check', 30)}</div><h3>${S.wizName} is ready</h3><span class="muted">Starter menu and tables created. An invite was sent to the owner.</span><button class="btn" data-act="plat" data-arg="restaurants">See the restaurant list</button></div>` : `<h2>Onboard a restaurant</h2><div class="wiz">${['1  Details', '2  Starter set-up', '3  Plan and owner'].map((x, i) => `<span class="${S.wiz === i + 1 ? 'on' : ''}">${x}</span>`).join('')}</div>
+      ${S.wiz === 1 ? `<div class="formgrid"><label class="f">Restaurant name<input id="wz-name" data-in="wzname" value="${S.wizName}"></label><label class="f">City<input value="Lahore"></label><label class="f">Currency<select><option>Rs</option><option>AED</option></select></label><label class="f">Tax %<input value="10"></label></div>` : ''}
+      ${S.wiz === 2 ? `<div class="formgrid"><label class="f">Starter menu<select><option>Pakistani grill and curries</option><option>Cafe and bakery</option><option>Start empty</option></select></label><label class="f">Number of tables<input value="8"></label></div><p class="muted">We create the tables and a QR code for each, ready to print.</p>` : ''}
+      ${S.wiz === 3 ? `<div class="formgrid"><label class="f">Plan<select><option>Starter</option><option>Growth</option><option>Chain</option></select></label><label class="f">Owner email<input value="owner@example.com"></label></div>` : ''}
+      <div class="row">${S.wiz > 1 ? '<button class="btn ghost" data-act="wiz" data-arg="-1">Back</button>' : ''}<button class="btn" data-act="wiz" data-arg="1">${S.wiz === 3 ? 'Create restaurant' : 'Continue'}</button></div>`;
+    if (S.plat === 'plans') body = `<h2>Plans and billing</h2><p class="muted">Example plans for the prototype. Real prices are still to be decided.</p><div class="plans">${[['Starter', 'Up to 6 tables', ['QR ordering', 'Kitchen display', 'Email receipts']], ['Growth', 'Up to 20 tables', ['Everything in Starter', 'Floor map and reports', 'Branding']], ['Chain', 'Many restaurants', ['Everything in Growth', 'Central menu', 'Priority support']]].map(([n, l, f], i) => `<div class="plan ${i === 1 ? 'mid' : ''}"><b style="font-size:16px">${n}</b><span class="muted">${l}</span><ul>${f.map((x) => `<li>${x}</li>`).join('')}</ul><span class="muted sm">Price: to be set</span></div>`).join('')}</div>
+      <div class="tbl-wrap"><table class="t"><tr><th>Restaurant</th><th>Plan</th><th>Next invoice</th><th>Status</th></tr>${S.rests.map((r) => `<tr><td>${r[0]}</td><td>${r[3]}</td><td class="muted">1st of next month</td><td><span class="st ${r[4] === 'Active' ? 'eating' : 'bill'}">${r[4] === 'Active' ? 'Paid' : 'Trial'}</span></td></tr>`).join('')}</table></div>`;
+    return `<div class="laptop"><div class="lbar"><i></i><i></i><i></i><span class="url">console.tableflow.app</span></div><div class="lbody"><nav class="lnav"><div class="who"><div class="logo" style="background:var(--fg);color:var(--bg)">TF</div>Platform</div>${tabs.map(([id, l]) => `<button data-act="plat" data-arg="${id}" class="${S.plat === id ? 'on' : ''}">${l}</button>`).join('')}</nav><div class="lmain">${body}</div></div></div>`;
+  },
+};
+
+/* ---------- flow definition and the requirement notes ---------- */
+const FLOW = [
+  { id: 'scan', label: 'Scan', title: 'The guest scans the table QR', blurb: 'Every table has its own code. Scanning opens the menu in the phone browser. No app and no login.', reqs: [['FR-01', 'A unique QR code for each table', 'Alpha'], ['FR-02', 'Opens the menu in the browser, no install or login', 'Alpha'], ['FR-03', 'Shows restaurant name and table number', 'Alpha'], ['FR-05', 'Guests at one table share the same order', 'Alpha']] },
+  { id: 'menu', label: 'Menu', title: 'Browse the digital menu', blurb: 'Categories, dish details, allergen and spice tags, portion sizes. Tap a dish for add-ons and a combo. Try the Avoid filters.', reqs: [['FR-06', 'Menu split into categories', 'Alpha'], ['FR-07', 'Name, price, description and photo', 'Alpha'], ['FR-08', 'Allergen tags', 'Alpha'], ['FR-09', 'Spice level', 'Alpha'], ['FR-10', 'Half and Full sizes with their own prices', 'Alpha'], ['FR-12', 'Combo deals and add-ons', 'Beta'], ['FR-13', 'Sold-out dishes cannot be ordered', 'Beta'], ['FR-14', 'Filter the menu by allergen', 'Beta'], ['FR-55', 'Restaurant name, logo and colours', 'Beta']] },
+  { id: 'order', label: 'Order', title: 'Build the cart and place the order', blurb: 'Change quantities, add a note to any dish, then place the order.', reqs: [['FR-15', 'Cart with size, quantity and running total', 'Alpha'], ['FR-16', 'Place order and see a confirmation', 'Alpha'], ['FR-18', 'A note on each dish', 'Beta']] },
+  { id: 'kitchen', label: 'Kitchen', title: 'Staff confirm, the kitchen cooks', blurb: 'The order lands on the staff tablet. Edit or reject it, or send it to the kitchen, where tickets split by station with timers. The late ticket turns red.', reqs: [['FR-20', 'New order appears instantly on the staff tablet', 'Alpha'], ['FR-21', 'One tap sends it to the kitchen', 'Alpha'], ['FR-22', 'Kitchen display with table number and timer', 'Alpha'], ['FR-23', 'Tickets split by station', 'Alpha'], ['FR-24', 'Kitchen marks dishes Ready', 'Alpha'], ['FR-25', 'Staff can edit or reject an order', 'Beta'], ['FR-26', 'Timers change colour when over target', 'Beta']] },
+  { id: 'wait', label: 'Wait', title: 'The guest follows the order', blurb: 'Live status and a countdown that grows when the kitchen is busy. Items can be cancelled until the kitchen starts them.', reqs: [['FR-27', 'Live status: Placed, Cooking, Ready, Served', 'Alpha'], ['FR-28', 'Estimated minutes left', 'Alpha'], ['FR-29', 'Estimate adjusts to how busy the kitchen is', 'Beta'], ['FR-19', 'Add items or cancel before cooking starts', 'Beta']] },
+  { id: 'call', label: 'Call', title: 'Ask for service with one tap', blurb: 'Water, napkins, the bill or a waiter. Staff see the request at once, assign it and answer. The response time is measured.', reqs: [['FR-33', 'One-tap requests', 'Alpha'], ['FR-34', 'Shows instantly on the staff screen', 'Alpha'], ['FR-35', 'Staff acknowledge, guest sees it', 'Alpha'], ['FR-36', 'Assign a request to a staff member', 'Beta'], ['FR-37', 'Response time shown to staff and owner', 'Beta']] },
+  { id: 'floor', label: 'Floor', title: 'Staff see the whole floor live', blurb: 'Every table with its status. Tap one to see the order, the request and who is assigned.', reqs: [['FR-38', 'Live map: Eating, Bill, Ordering, Help', 'Beta'], ['FR-39', 'Tap a table for request details and assigned staff', 'Beta'], ['FR-36', 'Assign a staff member', 'Beta']] },
+  { id: 'pay', label: 'Pay', title: 'Split the bill, tip and pay', blurb: 'An itemised bill with service charge and tax. Split it, pick a tip and a payment method. The staff tablet marks it paid and resets the table.', reqs: [['FR-41', 'Itemised bill for the table', 'Beta'], ['FR-42', 'Split equally between people', 'Beta'], ['FR-43', 'Tip of 5, 10, 15 percent or custom', 'Beta'], ['FR-44', 'Payment method recorded, staff mark paid', 'Beta'], ['FR-45', 'Tax and service charge per restaurant', 'Beta']] },
+  { id: 'review', label: 'Review', title: 'Receipt and review', blurb: 'The receipt goes to the guest by email and a one-tap star rating follows.', reqs: [['FR-48', 'Receipt sent by email', 'Beta'], ['FR-49', '1 to 5 stars with an optional comment', 'Beta']] },
+  { id: 'overview', label: 'Overview', title: 'The owner sees tonight at a glance', blurb: 'Live tables, orders and sales, with reports on sales, best sellers, peak hours and prep time. The figures are sample data.', reqs: [['FR-51', 'Live overview: tables, orders, sales', 'Beta'], ['FR-52', 'Sales by day, best sellers, peak hours, prep time', 'Beta']] },
+];
+const BACK = [
+  { id: 'menu-admin', label: 'Menu', title: 'Manage the menu', blurb: 'Add dishes, set each dish\'s kitchen station and mark items sold out. The toggle hides them from guests at once.', reqs: [['FR-11', 'Add, edit and delete categories and dishes', 'Alpha'], ['FR-23', 'Owner sets the station for each dish', 'Alpha'], ['FR-13', 'Mark a dish sold out', 'Beta']] },
+  { id: 'floor-layout', label: 'Floor layout', title: 'Arrange the dining room', blurb: 'Drag tables to match the room. Staff see the same layout on their floor map.', reqs: [['FR-40', 'Owner arranges the table layout', 'Beta']] },
+  { id: 'qr-codes', label: 'QR codes', title: 'Print the table codes', blurb: 'One code for every table, ready to print.', reqs: [['FR-04', 'Generate and print QR codes per table', 'Alpha'], ['FR-01', 'Each code is unique to its table', 'Alpha']] },
+  { id: 'reviews', label: 'Reviews', title: 'Read the guest reviews', blurb: 'All reviews in one list. Post one in the journey and it appears here.', reqs: [['FR-50', 'Owner reads all reviews in one list', 'Beta']] },
+  { id: 'staff', label: 'Staff and roles', title: 'Staff accounts and roles', blurb: 'Owner, waiter and kitchen each see only their own screens.', reqs: [['FR-53', 'Accounts with roles', 'Alpha'], ['FR-54', 'One restaurant never sees another\'s data', 'Alpha']] },
+  { id: 'branding', label: 'Branding', title: 'Make it the restaurant\'s own', blurb: 'Change the name and colour and watch the guest phone update. Set service charge and tax.', reqs: [['FR-55', 'Name, logo and colours on guest pages', 'Beta'], ['FR-45', 'Tax and service charge per restaurant', 'Beta']] },
+  { id: 'platform', label: 'Platform console', title: 'Our side: onboard and bill restaurants', blurb: 'Create a restaurant account with a starter menu and tables, and manage plans. This console is for us, not the restaurant.', reqs: [['FR-56', 'Create a restaurant with a starter menu and tables', 'Beta'], ['FR-57', 'Subscription plans and billing', 'Beta'], ['FR-54', 'Data kept separate per restaurant', 'Alpha']] },
+];
+const ALL = Object.fromEntries([...FLOW, ...BACK].map((s) => [s.id, s]));
+
+/* ---------- rendering ---------- */
+function buildNav() {
+  $('#navFlow').innerHTML = FLOW.map((s, i) => `<button data-act="go" data-arg="${s.id}" data-nav="${s.id}"><span class="n">${i + 1}</span>${s.label}</button>`).join('');
+  $('#navBack').innerHTML = BACK.map((s) => `<button class="plain" data-act="go" data-arg="${s.id}" data-nav="${s.id}">${s.label}</button>`).join('');
+}
+function render() {
+  const sc = ALL[S.screen], idx = FLOW.findIndex((s) => s.id === S.screen);
+  const keep = [...document.querySelectorAll('#screen .scroll, #screen .tbody, #screen .lmain')].map((e) => e.scrollTop);
+  const a = document.activeElement, focus = a && a.id ? [a.id, a.selectionStart, a.selectionEnd] : null;
+  $('#screen').innerHTML = SCREENS[S.screen]();
+  $('#notes').innerHTML = `<h2>${sc.title}</h2><p class="muted">${sc.blurb}</p><div class="for">Requirements shown</div><ul class="reqs">${sc.reqs.map(([id, t, p]) => `<li><span class="rid">${id}</span><span>${t}</span><span class="ph ${p}">${p}</span></li>`).join('')}</ul><div class="later">Not shown: online payment gateway, WiFi and rewards, quiz, inventory, reservations, multi-language. Those come after Beta.</div>`;
+  document.querySelectorAll('[data-nav]').forEach((b) => { const i = FLOW.findIndex((s) => s.id === b.dataset.nav); b.classList.toggle('on', b.dataset.nav === S.screen); b.classList.toggle('done', idx >= 0 && i >= 0 && i < idx); });
+  document.querySelectorAll('#screen .scroll, #screen .tbody, #screen .lmain').forEach((e, i) => { if (keep[i]) e.scrollTop = keep[i]; });
+  if (focus) { const el = document.getElementById(focus[0]); if (el) { el.focus(); try { el.setSelectionRange(focus[1], focus[2]); } catch (e) { /* not a text input */ } } }
+  const next = FLOW[idx + 1], prev = FLOW[idx - 1];
+  $('#prev').disabled = !prev; $('#next').disabled = idx < 0 || !next;
+  $('#next').textContent = next ? 'Next: ' + next.label : 'End of journey';
+  $('#where').textContent = idx >= 0 ? `Step ${idx + 1} of ${FLOW.length} · ${sc.title}` : 'Back office · ' + sc.title;
+  if (location.hash !== '#' + S.screen) history.replaceState(null, '', '#' + S.screen);
+}
+let toastT;
+function toast(t) { const el = $('#toast'); el.textContent = t; el.className = 'show'; clearTimeout(toastT); toastT = setTimeout(() => { el.className = ''; }, 2200); }
+const go = (id) => { if (!ALL[id]) return; S.screen = id; S.sheet = null; render(); window.scrollTo({ top: 0 }); };
+const addLine = (id, size, qty) => { const l = S.cart.find((x) => x.id === id && x.size === (size || '')); if (l) l.qty += qty; else S.cart.push({ id, size: size || '', qty, note: '' }); };
+
+const A = {
+  go: (v) => go(v), reset() { S = { ...initial(), screen: S.screen }; render(); toast('Demo reset'); },
+  prev() { const i = FLOW.findIndex((s) => s.id === S.screen); if (i > 0) go(FLOW[i - 1].id); },
+  next() { const i = FLOW.findIndex((s) => s.id === S.screen); if (i >= 0 && i < FLOW.length - 1) go(FLOW[i + 1].id); },
+  toast: (v) => toast(v),
+  cat(v) { S.cat = v; render(); },
+  filt(v) { S.filter.has(v) ? S.filter.delete(v) : S.filter.add(v); render(); },
+  dish(v) { const d = dish(v); S.sheet = v; S.shSize = d.sizes ? Object.keys(d.sizes)[0] : null; S.shQty = 1; render(); },
+  close() { S.sheet = null; render(); },
+  shsize(v) { S.shSize = v; render(); }, shqty(v) { S.shQty = Math.max(1, S.shQty + +v); render(); },
+  addsheet() { addLine(S.sheet, S.shSize, S.shQty); S.sheet = null; render(); toast('Added to your order'); },
+  quick(v) { addLine(v, '', 1); render(); toast(dish(v).name + ' added'); },
+  combo() { addLine('makhani', 'Full', 1); addLine('naan', '', 2); addLine('lassi', '', 1); S.sheet = null; render(); toast('Combo added'); },
+  qty(v) { const [i, d] = v.split(':').map(Number); S.cart[i].qty += d; if (S.cart[i].qty < 1) S.cart.splice(i, 1); render(); },
+  place() { S.placed = true; S.sent = false; render(); },
+  edit() { S.edit = !S.edit; render(); }, reject() { S.rejected = true; render(); }, undoreject() { S.rejected = false; render(); },
+  send() {
+    const g = {}; S.cart.forEach((l) => { const d = dish(l.id); (g[d.st] ||= []).push(`${l.qty} × ${d.name}${l.size ? ` (${l.size})` : ''}`); });
+    Object.entries(g).forEach(([st, items]) => S.K.push({ id: 't5' + st, t: 5, o: 2041, st, items, sec: 0, target: { Curry: 900, Tandoor: 600, Drinks: 300 }[st] }));
+    S.sent = true; S.edit = false; render(); toast('Sent to the kitchen');
+  },
+  kready(v) { S.K = S.K.filter((t) => t.id !== v); render(); toast('Marked ready'); },
+  cancel(v) { S.cart.splice(+v, 1); render(); toast('Item cancelled'); },
+  callk(v) { S.callKind = v; S.R = S.R.filter((r) => r.id !== 'r5'); S.R.unshift({ id: 'r5', t: 5, kind: v, age: 0, status: 'open', who: '' }); render(); toast(v + ' requested'); },
+  rack(v) { const r = S.R.find((x) => x.id === v); r.status = 'ack'; r.who = r.who || 'Aman'; render(); },
+  rdone(v) { S.R = S.R.filter((x) => x.id !== v); if (v === 'r5') S.callKind = null; render(); },
+  seltable(v) { S.selTable = +v; render(); },
+  assignf(v) { (S.assigned ||= {})[S.selTable] = v; render(); toast(v + ' assigned to table ' + S.selTable); },
+  split(v) { S.split = Math.min(8, Math.max(1, S.split + +v)); render(); },
+  tip(v) { S.tip = +v; render(); }, method(v) { S.method = v; render(); },
+  pay() { S.paid = true; render(); }, markpaid() { S.paid = true; render(); },
+  star(v) { S.stars = +v; render(); }, post() { S.reviewPosted = true; if (!S.stars) S.stars = 5; render(); toast('Review posted'); },
+  sold(v) { S.sold.has(v) ? S.sold.delete(v) : S.sold.add(v); render(); },
+  adddish() { const n = $('#nd-name').value || 'New dish'; S.extra.push({ id: 'x' + S.extra.length, cat: $('#nd-cat').value, name: n, price: +$('#nd-price').value || 0, st: $('#nd-st').value, al: [], desc: '', hue: 200 }); render(); toast(n + ' added'); },
+  addtable() { const n = S.layout.length + 1; S.layout.push({ n, x: 50, y: 85, s: 'free', round: 0 }); render(); },
+  color(v) { S.brand.color = v; render(); },
+  plat(v) { S.plat = v; if (v === 'onboard') { S.wiz = 1; S.wizDone = false; } render(); },
+  wiz(v) { S.wiz += +v; if (S.wiz > 3) { S.wizDone = true; S.rests.push([S.wizName, 'Lahore', 8, 'Starter', 'Trial']); S.wiz = 3; } render(); },
+};
+const IN = {
+  note(v, el) { S.cart[+el.dataset.i].note = v; }, email(v) { S.email = v; }, comment(v) { S.comment = v; },
+  assign(v, el) { const r = S.R.find((x) => x.id === el.dataset.id); r.who = v === 'Unassigned' ? '' : v; render(); },
+  role(v, el) { S.staffRoles[el.dataset.n] = v; render(); },
+  brname(v) { S.brand.name = v || ' '; render(); }, svc(v) { S.brand.service = +v || 0; render(); }, tax(v) { S.brand.tax = +v || 0; render(); },
+  wzname(v) { S.wizName = v; },
+};
+document.addEventListener('click', (e) => { const el = e.target.closest('[data-act]'); if (el && A[el.dataset.act]) A[el.dataset.act](el.dataset.arg, el); });
+document.addEventListener('input', (e) => { const f = e.target.dataset && e.target.dataset.in; if (f && IN[f]) IN[f](e.target.value, e.target); });
+document.addEventListener('keydown', (e) => { if (/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return; if (e.key === 'ArrowRight') A.next(); if (e.key === 'ArrowLeft') A.prev(); });
+window.addEventListener('hashchange', () => { const id = location.hash.slice(1); if (ALL[id] && id !== S.screen) go(id); });
+
+// Drag tables on the layout canvas. Positions are kept in percent of the canvas.
+let drag = null;
+document.addEventListener('pointerdown', (e) => { const t = e.target.closest('[data-drag]'); if (t) { drag = { n: +t.dataset.drag, el: t }; t.setPointerCapture(e.pointerId); } });
+document.addEventListener('pointermove', (e) => {
+  if (!drag) return; const c = $('#canvas'); if (!c) return; const r = c.getBoundingClientRect();
+  const x = Math.min(95, Math.max(5, (e.clientX - r.left) / r.width * 100)), y = Math.min(93, Math.max(7, (e.clientY - r.top) / r.height * 100));
+  const t = S.layout.find((q) => q.n === drag.n); t.x = x; t.y = y; drag.el.style.left = x + '%'; drag.el.style.top = y + '%';
+});
+document.addEventListener('pointerup', () => { drag = null; });
+
+// One-second clock: the guest countdown and the kitchen timers move without re-drawing the screen.
+setInterval(() => {
+  S.eta = Math.max(0, S.eta - 1);
+  S.K.forEach((t) => { t.sec++; });
+  S.R.forEach((r) => { r.age++; });
+  document.querySelectorAll('[data-eta]').forEach((el) => { el.textContent = mmss(S.eta); });
+  document.querySelectorAll('[data-k]').forEach((el) => {
+    const t = S.K.find((x) => x.id === el.dataset.k); if (!t) return;
+    el.textContent = mmss(t.sec); const late = t.sec > t.target;
+    if (late && !el.classList.contains('late')) render(); // switch the ticket to its red, over-target look
+  });
+}, 1000);
+
+buildNav();
+const start = location.hash.slice(1);
+if (ALL[start]) S.screen = start;
+render();
+</script>
