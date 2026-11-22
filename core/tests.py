@@ -492,3 +492,17 @@ class BetaFoundation(TestCase):
         from .models import max_photo_size
         with self.assertRaises(ValidationError):
             max_photo_size(SimpleUploadedFile("big.png", b"0" * (5 * 1024 * 1024 + 1)))
+
+
+class Forbidden(TestCase):
+    def test_wrong_role_gets_a_helpful_page_with_switch_user(self):
+        r, table, curry, naan, users = make_restaurant("A")
+        c = Client()
+        c.force_login(users["kitchen"])
+        page = c.get("/staff/qr/")
+        self.assertEqual(page.status_code, 403)
+        self.assertContains(page, "Log out and switch user", status_code=403)
+        self.assertContains(page, users["kitchen"].username, status_code=403)
+        # logging out from there lands on the login page, which returns to the QR page
+        out = c.post("/accounts/logout/", {"next": "/accounts/login/?next=/staff/qr/"})
+        self.assertEqual(out.url, "/accounts/login/?next=/staff/qr/")

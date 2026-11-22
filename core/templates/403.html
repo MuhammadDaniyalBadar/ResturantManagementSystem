@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Not allowed{% endblock %}
+{% block body %}
+<main class="login">
+  <div class="card rise" style="padding: 28px; gap: 14px">
+    <h1 style="font-size: 22px; font-weight: 650">This page is not for your login</h1>
+    {% if request.user.is_authenticated %}
+    <p class="muted">You are logged in as <b style="color: var(--fg)">{{ request.user.username }}</b>{% if request.user.profile %} ({{ request.user.profile.role }}){% endif %}. Log out and sign in with an account that can open this page, for example the owner.</p>
+    <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<input type="hidden" name="next" value="{% url 'login' %}?next={{ request.path|urlencode }}"><button class="btn wide">Log out and switch user</button></form>
+    {% else %}
+    <p class="muted">Log in with a staff account to open this page.</p>
+    <a class="btn wide" href="{% url 'login' %}?next={{ request.path|urlencode }}">Log in</a>
+    {% endif %}
+    <a class="muted sm" href="/" style="text-align: center">Back to the start page</a>
+  </div>
+</main>
+{% endblock %}
