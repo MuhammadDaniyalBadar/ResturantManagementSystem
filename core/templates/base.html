@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
   <link rel="stylesheet" href="{% static 'core/app.css' %}">
+  {% if restaurant %}<style>:root { --acc: {{ restaurant.brand.acc }}; --acc-h: {{ restaurant.brand.acc_h }}; --acc-s: {{ restaurant.brand.acc_s }}; --tur: {{ restaurant.brand.acc }}; --sky: {{ restaurant.brand.acc }}; }</style>{% endif %}
 </head>
 <body class="{% block bodyclass %}{% endblock %}">
 {% block body %}{% endblock %}

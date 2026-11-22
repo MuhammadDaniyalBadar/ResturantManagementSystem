@@ -1,4 +1,6 @@
+import re
 import secrets
+from datetime import date
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -10,8 +12,36 @@ def new_code():
     return secrets.token_urlsafe(8)
 
 
+def max_photo_size(f):
+    if f.size > 5 * 1024 * 1024:
+        raise ValidationError("The photo is larger than 5 MB.")
+
+
+# Plans restaurants pay for. Limits are enforced when a table or a staff login is added. None = no limit.
+PLANS = {
+    "starter": {"name": "Starter", "price": 4999, "tables": 10, "staff": 5},
+    "pro": {"name": "Pro", "price": 9999, "tables": 40, "staff": 25},
+    "enterprise": {"name": "Enterprise", "price": 24999, "tables": None, "staff": None},
+}
+TRIAL_DAYS = 14
+
+
+def hex_colour(value):
+    if not re.fullmatch(r"#[0-9a-fA-F]{6}", value or ""):
+        raise ValidationError("Use a colour like #4c8dff.")
+
+
 class Restaurant(models.Model):
     name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=60, unique=True, null=True, blank=True, help_text="Used in the booking link")
+    tagline = models.CharField(max_length=120, blank=True)
+    brand_color = models.CharField(max_length=7, default="#4c8dff", validators=[hex_colour])
+    logo = models.ImageField(upload_to="logos/", blank=True, validators=[max_photo_size])
+    plan = models.CharField(max_length=12, choices=[(k, v["name"]) for k, v in PLANS.items()], default="pro")
+    trial_ends = models.DateField(null=True, blank=True)
+    paid_until = models.DateField(null=True, blank=True)
+    suspended = models.BooleanField(default=False, help_text="Set by the platform; guests cannot order and staff see a notice")
+    created_at = models.DateTimeField(auto_now_add=True, null=True)
     currency = models.CharField(max_length=8, default="Rs")
     service_percent = models.DecimalField(max_digits=5, decimal_places=2, default=5, help_text="Service charge added to every bill")
     tax_percent = models.DecimalField(max_digits=5, decimal_places=2, default=10, help_text="Tax added to every bill")
@@ -24,6 +54,39 @@ class Restaurant(models.Model):
     @property
     def initials(self):
         return "".join(w[0] for w in self.name.split())[:2].upper() or "R"
+
+    @property
+    def plan_info(self):
+        return PLANS[self.plan]
+
+    @property
+    def status(self):
+        """suspended, active (paid), trial, or expired."""
+        today = date.today()
+        if self.suspended:
+            return "suspended"
+        if self.paid_until and self.paid_until >= today:
+            return "active"
+        if self.trial_ends and self.trial_ends >= today:
+            return "trial"
+        return "expired"
+
+    @property
+    def open_for_business(self):
+        return self.status in ("active", "trial")
+
+    @property
+    def days_left(self):
+        end = self.paid_until if self.status == "active" else self.trial_ends if self.status == "trial" else None
+        return (end - date.today()).days if end else 0
+
+    @property
+    def brand(self):
+        """The accent colour and its lighter and soft versions for CSS."""
+        c = self.brand_color if re.fullmatch(r"#[0-9a-fA-F]{6}", self.brand_color or "") else "#4c8dff"
+        r, g, b = (int(c[i:i + 2], 16) for i in (1, 3, 5))
+        light = "#%02x%02x%02x" % tuple(min(255, int(x + (255 - x) * .25)) for x in (r, g, b))
+        return {"acc": c, "acc_h": light, "acc_s": f"rgba({r},{g},{b},.14)"}
 
     def __str__(self):
         return self.name
@@ -78,11 +141,6 @@ class Category(models.Model):
     def picture(self):
         """Uploaded photo URL if there is one, otherwise the illustration name."""
         return self.photo.url if self.photo else self.art
-
-
-def max_photo_size(f):
-    if f.size > 5 * 1024 * 1024:
-        raise ValidationError("The photo is larger than 5 MB.")
 
 
 class Dish(models.Model):
@@ -297,3 +355,41 @@ class QuizAnswer(models.Model):
 
     class Meta:
         unique_together = [("guest", "question")]
+
+
+class PlanPayment(models.Model):
+    """A plan payment, recorded by the platform today; a payment gateway would call the same service later."""
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="plan_payments")
+    plan = models.CharField(max_length=12)
+    months = models.PositiveIntegerField(default=1)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    reference = models.CharField(max_length=120, blank=True)
+    recorded_by = models.CharField(max_length=150, blank=True)
+    paid_at = models.DateTimeField(auto_now_add=True)
+    period_end = models.DateField()
+
+    class Meta:
+        ordering = ["-paid_at"]
+
+
+class Reservation(models.Model):
+    REQUESTED, CONFIRMED, SEATED, CANCELLED, NO_SHOW = "requested", "confirmed", "seated", "cancelled", "no_show"
+    STATUSES = [(REQUESTED, "Requested"), (CONFIRMED, "Confirmed"), (SEATED, "Seated"), (CANCELLED, "Cancelled"), (NO_SHOW, "No-show")]
+
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="reservations")
+    name = models.CharField(max_length=80)
+    phone = models.CharField(max_length=30)
+    email = models.EmailField(blank=True)
+    party = models.PositiveIntegerField()
+    when = models.DateTimeField()
+    note = models.CharField(max_length=300, blank=True)
+    status = models.CharField(max_length=10, choices=STATUSES, default=REQUESTED)
+    table = models.ForeignKey(Table, on_delete=models.SET_NULL, null=True, blank=True, related_name="reservations")
+    code = models.CharField(max_length=16, default=new_code, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["when"]
+
+    def __str__(self):
+        return f"{self.name} x{self.party} {self.when:%d %b %H:%M}"

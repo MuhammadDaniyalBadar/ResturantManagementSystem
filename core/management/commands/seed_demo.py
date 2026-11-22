@@ -1,4 +1,5 @@
 import os
+from datetime import date, timedelta
 
 from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
@@ -53,6 +54,7 @@ class Command(BaseCommand):
         restaurant = Restaurant.objects.create(
             name="Demo Kitchen", currency="Rs", wifi_name="DemoKitchen-Guest", wifi_password="spice2026",
             reward_rate=10, reward_goal=200, reward_text="Free Mango Lassi",
+            slug="demo-kitchen", tagline="Spice, smoke and tandoor", plan="pro", paid_until=date.today() + timedelta(days=365),
         )
 
         categories, dishes = {}, {}
@@ -78,7 +80,9 @@ class Command(BaseCommand):
             StaffProfile.objects.create(user=user, restaurant=restaurant, role=role)
             services.set_access(user, role)
 
+        if not User.objects.filter(username="platform").exists():  # you, running the platform: sees every restaurant at /platform/
+            User.objects.create_superuser("platform", password=password)
         self.stdout.write(self.style.SUCCESS("Demo restaurant created."))
-        self.stdout.write(f"Logins: owner, waiter, sara, kitchen. Password: {password if not os.environ.get('DEMO_PASSWORD') else '(from DEMO_PASSWORD)'}")
+        self.stdout.write(f"Logins: owner, waiter, sara, kitchen, and platform (the whole platform). Password: {password if not os.environ.get('DEMO_PASSWORD') else '(from DEMO_PASSWORD)'}")
         for table in restaurant.tables.all():
             self.stdout.write(f"  Table {table.number}: /t/{table.code}/")

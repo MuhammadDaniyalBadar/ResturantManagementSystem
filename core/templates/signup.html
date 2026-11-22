@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Start your free trial{% endblock %}
+{% block body %}
+<main class="page" style="min-height: 100vh; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 40px; align-items: center; padding-top: 40px; max-width: 1100px">
+  <section class="col rise" style="gap: 18px">
+    <span class="pill" style="align-self: flex-start"><span class="livedot"></span>{{ trial_days }}-day free trial · no card needed</span>
+    <h1 style="font-size: clamp(36px, 5vw, 54px); line-height: 1.04; font-weight: 700; letter-spacing: -.03em">Put your restaurant on the <span class="gold">table</span> in five minutes.</h1>
+    <p class="muted" style="font-size: 16px">QR menus and ordering, a kitchen display, a live floor map, games and rewards, split bills and invoices. Your tables and QR codes are ready the moment you sign up.</p>
+    <ul class="col" style="gap: 8px">
+      <li class="row"><span class="tag em">1</span>Add your dishes and photos</li>
+      <li class="row"><span class="tag em">2</span>Print the QR codes for your tables</li>
+      <li class="row"><span class="tag em">3</span>Add your waiters and kitchen</li>
+    </ul>
+    <div class="row" style="gap: 10px; flex-wrap: wrap">
+      {% for code, p in plans.items %}<span class="pill">{{ p.name }} · Rs {{ p.price }}/month · {% if p.tables %}{{ p.tables }} tables{% else %}unlimited{% endif %}</span>{% endfor %}
+    </div>
+  </section>
+  <form method="post" class="card rise" style="--i: 1; padding: 28px; gap: 14px" novalidate>
+    {% csrf_token %}
+    <h2 style="font-size: 20px; font-weight: 650">Create your restaurant</h2>
+    {% if error %}<p role="alert" style="color: #ff8f87; font-weight: 600">{{ error }}</p>{% endif %}
+    <label class="f">Restaurant name<input name="restaurant" required maxlength="120" value="{{ v.restaurant }}" autocomplete="organization"></label>
+    <label class="f">Number of tables<input name="tables" type="number" min="1" max="40" required value="{{ v.tables|default:'8' }}"></label>
+    <label class="f">Your name<input name="name" maxlength="150" value="{{ v.name }}" autocomplete="name"></label>
+    <label class="f">Email (for your receipts)<input name="email" type="email" value="{{ v.email }}" autocomplete="email"></label>
+    <label class="f">Username<input name="username" required maxlength="30" value="{{ v.username }}" autocomplete="username"></label>
+    <label class="f">Password<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+    <div style="position: absolute; left: -9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+    <button class="btn wide" type="submit">Start my free trial</button>
+    <p class="muted sm" style="text-align: center">Already have an account? <a href="{% url 'login' %}">Log in</a></p>
+  </form>
+</main>
+{% endblock %}

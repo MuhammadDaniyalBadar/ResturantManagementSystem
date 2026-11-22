@@ -4,6 +4,11 @@ from . import views
 
 urlpatterns = [
     path("", views.home, name="home"),
+    path("signup/", views.signup, name="signup"),
+    path("book/<slug:slug>/", views.book, name="book"),
+    path("platform/", views.platform_page, name="platform"),
+    path("platform/data/", views.platform_data, name="platform_data"),
+    path("platform/restaurants/<int:pk>/<str:action>/", views.platform_action, name="platform_action"),
     # guest
     path("t/<str:code>/", views.table_page, name="table"),
     path("t/<str:code>/state/", views.table_state, name="table_state"),
@@ -27,6 +32,9 @@ urlpatterns = [
     path("staff/payments/<int:pk>/paid/", views.payment_paid, name="payment_paid"),
     path("staff/bills/<int:pk>/close/", views.bill_close, name="bill_close"),
     path("staff/qr/", views.qr_sheet, name="qr"),
+    path("staff/reservations/", views.reservations_page, name="reservations"),
+    path("staff/reservations/data/", views.reservations_data, name="reservations_data"),
+    path("staff/reservations/<int:pk>/<str:action>/", views.reservation_action, name="reservation_action"),
     # kitchen
     path("kitchen/", views.kitchen_page, name="kitchen"),
     path("kitchen/data/", views.kitchen_data, name="kitchen_data"),
@@ -35,6 +43,7 @@ urlpatterns = [
     path("owner/", views.owner_page, name="owner"),
     path("owner/data/", views.owner_data, name="owner_data"),
     path("owner/team/", views.team_page, name="team"),
+    path("owner/settings/", views.settings_page, name="settings"),
     path("owner/team/data/", views.team_data, name="team_data"),
     path("owner/team/<int:pk>/", views.team_member, name="team_member"),
 ]

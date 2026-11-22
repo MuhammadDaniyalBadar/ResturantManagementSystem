@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}Platform{% endblock %}
+{% block body %}
+<header class="rail" style="position: static; width: auto; flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line)">
+  <div class="rail-brand" style="padding: 0"><div class="logo">P</div><div><b>Platform console</b><span>All restaurants on the service</span></div></div>
+  <div class="rail-foot" style="flex-direction: row; border: 0; padding: 0; margin: 0 0 0 auto">
+    <span class="rail-live"><span class="livedot"></span>Live</span>
+    <a class="btn ghost sm" href="/admin/">Admin</a>
+    <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
+  </div>
+</header>
+<style>@media (min-width: 960px) { body { padding-left: 0 } }</style>
+<main class="page" style="padding-top: 24px" id="main"></main>
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+let D = null, first = true;
+const kpi = (label, value, i) => h('div', { class: 'kpi', style: first ? `--i:${i}` : 'animation:none' }, h('span', { class: 'muted sm b' }, label), h('b', {}, value));
+const when = (iso) => (iso ? new Date(iso + 'T00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '–');
+
+function actions(r) {
+  const post = (action, body, done) => act(() => api(`/platform/restaurants/${r.id}/${action}/`, body || {}).then(() => toast(done)), refresh);
+  return h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' },
+    h('select', { 'aria-label': 'Plan for ' + r.name, style: 'padding:6px 8px', onchange: (e) => post('plan', { plan: e.target.value }, 'Plan changed') },
+      Object.entries(D.plans).map(([k, p]) => h('option', { value: k, selected: k === r.plan }, p.name))),
+    h('button', { class: 'btn sm', onclick: () => {
+      const months = prompt(`Months paid for ${r.name} on ${r.plan_name}:`, '1'); if (!months) return;
+      const amount = prompt('Amount received (Rs):', String(r.price * +months)); if (amount === null) return;
+      const reference = prompt('Reference (bank transfer ID, receipt no.):', '') || '';
+      post('pay', { plan: r.plan, months, amount, reference }, 'Payment recorded');
+    } }, 'Mark paid'),
+    r.status === 'trial' || r.status === 'expired' ? h('button', { class: 'btn ghost sm', onclick: () => post('trial', {}, 'Trial extended by 14 days') }, '+14 days trial') : null,
+    r.status === 'suspended' ? h('button', { class: 'btn ghost sm', onclick: () => post('resume', {}, 'Resumed') }, 'Resume')
+      : h('button', { class: 'btn red sm', onclick: () => { if (confirm(`Pause ${r.name}? Their guests cannot order until you resume.`)) post('suspend', {}, 'Paused'); } }, 'Pause'));
+}
+function render() {
+  const c = D.counts;
+  $('#main').replaceChildren(
+    h('div', { class: 'pagehead', style: 'padding:0 0 18px' }, h('div', {}, h('h1', {}, 'Restaurants'), h('p', {}, D.restaurants.length + ' on the platform. Sign-up link: ' + location.origin + '/signup/'))),
+    h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px' },
+      kpi('Paying', c.active, 0), kpi('On trial', c.trial, 1), kpi('Expired', c.expired, 2), kpi('Paused', c.suspended, 3),
+      kpi('Monthly revenue', 'Rs ' + D.mrr.toLocaleString(), 4), kpi('Collected this month', 'Rs ' + Number(D.collected_month).toLocaleString(), 5)),
+    h('section', { class: 'card', style: 'padding:0;margin-top:18px;overflow-x:auto' },
+      h('table', { class: 'dtable' },
+        h('thead', {}, h('tr', {}, ['Restaurant', 'Owner', 'Status', 'Plan', 'Until', 'Tables', 'Staff', 'Orders 30d', 'Sales 30d', 'Last order', ''].map((t) => h('th', {}, t)))),
+        h('tbody', {}, D.restaurants.map((r) => h('tr', {},
+          h('td', {}, h('div', { class: 'b' }, r.name), h('div', { class: 'muted sm' }, 'joined ' + when(r.created))),
+          h('td', {}, r.owner ? [h('div', {}, r.owner.name), h('div', { class: 'muted sm' }, r.owner.email || '@' + r.owner.username)] : '–'),
+          h('td', {}, h('span', { class: 'st ' + r.status }, r.status)),
+          h('td', {}, r.plan_name, h('div', { class: 'muted sm' }, 'Rs ' + r.price.toLocaleString())),
+          h('td', { class: 'num' }, when(r.status === 'trial' || (!r.paid_until && r.trial_ends) ? r.trial_ends : r.paid_until), h('div', { class: 'muted sm' }, r.days_left ? r.days_left + ' days left' : '')),
+          h('td', { class: 'num' }, r.tables), h('td', { class: 'num' }, r.staff), h('td', { class: 'num' }, r.orders_30),
+          h('td', { class: 'num' }, r.currency + ' ' + Number(r.sales_30).toLocaleString()),
+          h('td', { class: 'muted sm' }, r.last_order === null ? 'never' : ago(r.last_order)),
+          h('td', {}, actions(r))))))),
+    h('section', { class: 'card', style: 'margin-top:18px;padding:20px;gap:8px' }, h('h2', { style: 'font-size:15px;font-weight:650' }, 'Recent plan payments'),
+      D.payments.length ? D.payments.map((p) => h('div', { class: 'spread sm', style: 'padding:6px 0;border-bottom:1px solid var(--line)' },
+        h('span', {}, h('b', {}, p.restaurant), ' · ' + p.plan + ' · ' + p.months + ' mo' + (p.reference ? ' · ' + p.reference : '')),
+        h('span', { class: 'row', style: 'gap:10px' }, h('span', { class: 'muted' }, ago(p.age) + ' by ' + p.by), h('b', { class: 'num' }, 'Rs ' + Number(p.amount).toLocaleString())))) : h('div', { class: 'empty' }, 'No payments recorded yet.')));
+  first = false;
+}
+async function refresh() { D = await api('/platform/data/'); render(); }
+refresh(); setInterval(refresh, 20000);
+</script>
+{% endblock %}

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Book a table · {{ restaurant.name }}{% endblock %}
+{% block body %}
+<main class="login" style="max-width: 460px; padding-top: 6vh">
+  <div class="row" style="gap: 12px; margin-bottom: 18px">
+    {% if logo_url %}<img class="logo" src="{{ logo_url }}" alt="" style="object-fit: cover">{% else %}<div class="logo">{{ restaurant.initials }}</div>{% endif %}
+    <div><b style="font-size: 16px">{{ restaurant.name }}</b>{% if restaurant.tagline %}<div class="muted sm">{{ restaurant.tagline }}</div>{% endif %}</div>
+  </div>
+  {% if done %}
+  <section class="card pop" style="padding: 26px; gap: 12px; align-items: flex-start" role="status">
+    <span class="tag em">Request sent</span>
+    <h1 style="font-size: 26px; font-weight: 700">Thanks, {{ done.name }}.</h1>
+    <p class="muted">Your request for <b style="color: var(--fg)">{{ done.party }}</b> on <b style="color: var(--fg)">{{ done.when|date:"l j F" }} at {{ done.when|time:"H:i" }}</b> is with {{ restaurant.name }}. They will confirm{% if done.email %} by email{% else %} by phone{% endif %} soon.</p>
+    <p class="muted sm">Booking reference {{ done.code }}</p>
+  </section>
+  {% else %}
+  <form method="post" class="card rise" style="padding: 26px; gap: 14px" novalidate>
+    {% csrf_token %}
+    <h1 style="font-size: 26px; font-weight: 700">Book a <span class="gold">table</span></h1>
+    {% if error %}<p role="alert" style="color: #ff8f87; font-weight: 600">{{ error }}</p>{% endif %}
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+      <label class="f">Date<input name="date" type="date" required min="{{ today }}" max="{{ last }}" value="{{ v.date|default:today }}"></label>
+      <label class="f">Time<input name="time" type="time" required value="{{ v.time|default:'20:00' }}" step="900"></label>
+    </div>
+    <label class="f">People<input name="party" type="number" min="1" max="30" required value="{{ v.party|default:'2' }}"></label>
+    <label class="f">Your name<input name="name" required maxlength="80" value="{{ v.name }}" autocomplete="name"></label>
+    <label class="f">Phone<input name="phone" type="tel" required maxlength="30" value="{{ v.phone }}" autocomplete="tel"></label>
+    <label class="f">Email (optional, for the confirmation)<input name="email" type="email" value="{{ v.email }}" autocomplete="email"></label>
+    <label class="f">Anything we should know?<textarea name="note" rows="2" maxlength="300" placeholder="Birthday, high chair, allergies…">{{ v.note }}</textarea></label>
+    <div style="position: absolute; left: -9999px" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+    <button class="btn wide" type="submit">Request the table</button>
+  </form>
+  {% endif %}
+</main>
+{% endblock %}

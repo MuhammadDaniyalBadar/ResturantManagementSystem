@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Settings · {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}ops{% endblock %}
+{% block body %}
+{% include "_rail.html" with active="settings" %}
+<div class="pagehead"><div><h1>Settings and plan</h1><p>Your brand, bill settings, guest WiFi and rewards. Changes show on guests' phones right away.</p></div></div>
+<main class="page" style="padding-top: 20px">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; align-items: start">
+    <form method="post" enctype="multipart/form-data" class="card" style="padding: 22px; gap: 16px">
+      {% csrf_token %}
+      {% if saved %}<p class="tag em" role="status" style="align-self: flex-start">Saved</p>{% endif %}
+      {% if form.errors %}<p role="alert" style="color: #ff8f87; font-weight: 600">Please fix the fields marked below.</p>{% endif %}
+      <h2 style="font-size: 15px; font-weight: 650">Brand</h2>
+      {% for f in form %}
+        {% if f.name == "currency" %}<h2 style="font-size: 15px; font-weight: 650; margin-top: 6px">Bill</h2>{% endif %}
+        {% if f.name == "wifi_name" %}<h2 style="font-size: 15px; font-weight: 650; margin-top: 6px">Guest WiFi</h2>{% endif %}
+        {% if f.name == "reward_rate" %}<h2 style="font-size: 15px; font-weight: 650; margin-top: 6px">Rewards</h2>{% endif %}
+        <label class="f">{{ f.label }}{{ f }}
+          {% if f.help_text %}<span class="muted sm" style="font-weight: 400">{{ f.help_text }}</span>{% endif %}
+          {% for e in f.errors %}<span style="color: #ff8f87">{{ e }}</span>{% endfor %}
+        </label>
+      {% endfor %}
+      <button class="btn" type="submit">Save settings</button>
+    </form>
+    <div class="col" style="gap: 20px">
+      <section class="card" style="padding: 22px; gap: 12px">
+        <div class="spread"><h2 style="font-size: 15px; font-weight: 650">Your plan</h2><span class="st {{ restaurant.status }}">{{ restaurant.status }}</span></div>
+        <div class="spread"><span class="b" style="font-size: 20px">{{ restaurant.plan_info.name }}</span><span class="muted">Rs {{ restaurant.plan_info.price }} / month</span></div>
+        <p class="muted sm">
+          {% if restaurant.status == "active" %}Paid until {{ restaurant.paid_until }} ({{ restaurant.days_left }} days).
+          {% elif restaurant.status == "trial" %}Free trial until {{ restaurant.trial_ends }} ({{ restaurant.days_left }} days left).
+          {% elif restaurant.status == "suspended" %}Your account is paused. Guests cannot order. Contact us to resume.
+          {% else %}Your plan has expired. Guests cannot order from the table until it is renewed.{% endif %}
+        </p>
+        <div class="col" style="gap: 6px">
+          <div class="spread sm"><span class="muted">Tables</span><span class="num b">{{ tables_used }}{% if restaurant.plan_info.tables %} / {{ restaurant.plan_info.tables }}{% endif %}</span></div>
+          <div class="spread sm"><span class="muted">Active staff logins</span><span class="num b">{{ staff_used }}{% if restaurant.plan_info.staff %} / {{ restaurant.plan_info.staff }}{% endif %}</span></div>
+        </div>
+        <p class="muted sm">To pay or change plan, send a bank transfer with your restaurant name as the reference and tell us; we switch it on the same day. Online payment is coming.</p>
+        <div class="col" style="gap: 6px">
+          {% for code, p in plans.items %}<div class="spread sm" style="padding: 8px 0; border-top: 1px solid var(--line)"><span class="b">{{ p.name }}{% if code == restaurant.plan %} · current{% endif %}</span><span class="muted">Rs {{ p.price }} · {% if p.tables %}{{ p.tables }} tables, {{ p.staff }} staff{% else %}no limits{% endif %}</span></div>{% endfor %}
+        </div>
+      </section>
+      {% if book_url %}
+      <section class="card" style="padding: 22px; gap: 10px">
+        <h2 style="font-size: 15px; font-weight: 650">Booking link</h2>
+        <p class="muted sm">Put this on Instagram, Google Maps and WhatsApp. Bookings arrive on the service desk under Reservations.</p>
+        <a href="{{ book_url }}" target="_blank" rel="noopener" style="word-break: break-all">{{ book_url }}</a>
+      </section>
+      {% endif %}
+      {% if payments %}
+      <section class="card" style="padding: 22px; gap: 8px">
+        <h2 style="font-size: 15px; font-weight: 650">Payments</h2>
+        {% for p in payments %}<div class="spread sm"><span>{{ p.paid_at|date:"j M Y" }} · {{ p.months }} month{{ p.months|pluralize }}</span><span class="num b">Rs {{ p.amount }}</span></div>{% endfor %}
+      </section>
+      {% endif %}
+    </div>
+  </div>
+</main>
+{% endblock %}

@@ -181,3 +181,13 @@ label.f { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font
 .kpi b { font-size: 30px; font-weight: 650; letter-spacing: -.03em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .hbar { height: 8px; border-radius: 4px; background: var(--acc); transform-origin: left; animation: growx .6s var(--ease) both; animation-delay: calc(var(--i, 0) * 70ms); }
 .stars button { color: #3a4352; transition: transform .15s var(--ease), color .15s; } .stars button.on { color: var(--saf); transform: scale(1.1); }
+
+/* plan notice in the rail, platform console */
+.planbox { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; font-size: 12px; background: var(--saf-s); color: var(--saf); }
+.planbox span { color: var(--muted); } .planbox a { font-weight: 600; margin-top: 4px; }
+.planbox.expired, .planbox.suspended { background: var(--chi-s); color: #ff8f87; }
+.dtable { width: 100%; border-collapse: collapse; font-size: 13px; }
+.dtable th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; padding: 10px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.dtable td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.dtable tr:hover td { background: var(--s2); }
+.st.active { background: var(--mint-s); color: var(--mint); } .st.trial { background: var(--sky-s); color: var(--acc-h); } .st.expired, .st.suspended { background: var(--chi-s); color: #ff8f87; }

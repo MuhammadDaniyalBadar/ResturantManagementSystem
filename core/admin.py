@@ -68,6 +68,13 @@ class TableAdmin(Scoped, admin.ModelAdmin):
     list_display = ("number", "x", "y", "round", "code")
     readonly_fields = ("code",)
 
+    def has_add_permission(self, request):
+        r = _own_restaurant(request)
+        limit = r.plan_info["tables"] if r else None
+        if limit is not None and r.tables.count() >= limit:
+            return False  # the plan is full; upgrading lifts the limit
+        return super().has_add_permission(request)
+
 
 class ItemInline(ScopedChoices, admin.TabularInline):
     model = models.OrderItem

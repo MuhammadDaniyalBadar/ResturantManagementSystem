@@ -5,13 +5,14 @@ from functools import wraps
 
 import segno
 from django.conf import settings
-from django.contrib.auth import get_user_model
+from django import forms
+from django.contrib.auth import get_user_model, login
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.views import LoginView
 from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Avg, Count, F, Sum
+from django.db.models import Avg, Count, F, Max, Sum
 from django.db.models.functions import ExtractHour, TruncDate
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -20,8 +21,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from . import services
-from .models import (Bill, Category, Deal, Dish, Guest, Member, Order, OrderItem, Payment, QuizQuestion, Review, ServiceRequest,
-                     StaffProfile, Table)
+from .models import (PLANS, TRIAL_DAYS, Bill, Category, Deal, Dish, Guest, Member, Order, OrderItem, Payment, PlanPayment, QuizQuestion,
+                     Reservation, Restaurant, Review, ServiceRequest, StaffProfile, Table)
 
 OWNER, WAITER, KITCHEN = StaffProfile.OWNER, StaffProfile.WAITER, StaffProfile.KITCHEN
 User = get_user_model()
@@ -134,6 +135,8 @@ def money(d):
 # ---------- home ----------
 
 def home(request):
+    if request.user.is_authenticated and request.user.is_superuser and not hasattr(request.user, "profile"):
+        return redirect("platform")
     profile = getattr(request.user, "profile", None) if request.user.is_authenticated else None
     if profile:
         return redirect("kitchen" if profile.role == KITCHEN else "staff")
@@ -186,7 +189,8 @@ def menu_data(restaurant):
 @require_GET
 def table_page(request, code):
     table = get_table(code)
-    return render(request, "guest.html", {"table": table, "restaurant": table.restaurant, "menu": menu_data(table.restaurant)})
+    r = table.restaurant
+    return render(request, "guest.html", {"table": table, "restaurant": r, "menu": menu_data(r), "logo_url": r.logo.url if r.logo else ""})
 
 
 @require_GET
@@ -500,8 +504,16 @@ def owner_data(request):
     hours = dict(live.filter(created_at__gte=week).annotate(h=ExtractHour("created_at")).values_list("h").annotate(c=Count("id")).order_by("h"))
     reviews = Review.objects.filter(bill__restaurant=r).select_related("guest", "bill__table")
     avg = reviews.aggregate(a=Avg("stars"))["a"]
+    staff_n = User.objects.filter(profile__restaurant=r).count()
+    setup = [
+        {"label": "Add your dishes", "done": Dish.objects.filter(restaurant=r).exists(), "url": "/admin/core/dish/add/"},
+        {"label": "Set your brand, tax and WiFi", "done": bool(r.wifi_name or r.logo or r.tagline), "url": reverse("settings")},
+        {"label": "Print the table QR codes", "done": Order.objects.filter(restaurant=r).exists(), "url": reverse("qr")},
+        {"label": "Add your waiters and kitchen", "done": staff_n > 1, "url": reverse("team")},
+    ]
     return JsonResponse({
         "currency": r.currency,
+        "setup": setup if not all(s["done"] for s in setup) else [],
         "tables_total": r.tables.count(), "tables_in_use": Bill.objects.filter(restaurant=r).exclude(status=Bill.PAID).count(),
         "orders_today": live.filter(created_at__gte=today).count(),
         "sales_today": money(day_sales.get(today.date(), Decimal(0))),
@@ -545,6 +557,180 @@ def team_member(request, pk):
     user = get_object_or_404(User, pk=pk, profile__restaurant=request.profile.restaurant)
     d = read_json(request)
     services.update_staff(request.user, user, active=d.get("active"), role=d.get("role"), password=d.get("password"))
+    return JsonResponse({"ok": True})
+
+
+# ---------- signup, settings and plan ----------
+
+SIGNUPS_PER_HOUR = 5
+
+
+def signup(request):
+    if request.user.is_authenticated and hasattr(request.user, "profile"):
+        return redirect("owner")
+    error, values = "", {}
+    if request.method == "POST":
+        values = {k: request.POST.get(k, "") for k in ("restaurant", "name", "username", "email", "tables")}
+        key = "signup:" + request.META.get("REMOTE_ADDR", "")
+        if request.POST.get("website"):  # hidden field only bots fill in
+            error = "Something went wrong. Please try again."
+        elif cache.get(key, 0) >= SIGNUPS_PER_HOUR:
+            error = "Too many sign-ups from this connection. Try again in an hour."
+        else:
+            try:
+                restaurant, user = services.create_restaurant(values["restaurant"], values["name"], values["username"], request.POST.get("password"), values["tables"], values["email"])
+            except services.OrderError as e:
+                error = str(e)
+            else:
+                cache.set(key, cache.get(key, 0) + 1, 3600)
+                login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+                return redirect("owner")
+    return render(request, "signup.html", {"error": error, "v": values, "plans": PLANS, "trial_days": TRIAL_DAYS}, status=400 if error else 200)
+
+
+class SettingsForm(forms.ModelForm):
+    class Meta:
+        model = Restaurant
+        fields = ["name", "tagline", "brand_color", "logo", "currency", "service_percent", "tax_percent", "wifi_name", "wifi_password", "reward_rate", "reward_goal", "reward_text"]
+        widgets = {"brand_color": forms.TextInput(attrs={"type": "color"})}
+
+
+@staff_only(OWNER)
+def settings_page(request):
+    r = request.profile.restaurant
+    form = SettingsForm(request.POST or None, request.FILES or None, instance=r)
+    saved = False
+    if request.method == "POST" and form.is_valid():
+        form.save()
+        services.notify_restaurant(r)
+        saved = True
+    return render(request, "settings.html", {"restaurant": r, "form": form, "saved": saved, "plans": PLANS,
+                                             "payments": r.plan_payments.all()[:12], "tables_used": r.tables.count(),
+                                             "staff_used": User.objects.filter(profile__restaurant=r, is_active=True).count(),
+                                             "book_url": request.build_absolute_uri(reverse("book", args=[r.slug])) if r.slug else ""})
+
+
+# ---------- reservations ----------
+
+def book(request, slug):
+    r = get_object_or_404(Restaurant, slug=slug)
+    error, v, done = "", {}, None
+    if request.method == "POST":
+        v = {k: request.POST.get(k, "") for k in ("name", "phone", "email", "party", "date", "time", "note")}
+        if request.POST.get("website"):
+            error = "Something went wrong. Please try again."
+        else:
+            try:
+                done = services.book_table(r, v["name"], v["phone"], v["party"], f"{v['date']}T{v['time']}", v["email"], v["note"])
+            except services.OrderError as e:
+                error = str(e)
+    today = timezone.localdate()
+    return render(request, "book.html", {"restaurant": r, "error": error, "v": v, "done": done, "today": today.isoformat(),
+                                         "last": (today + timedelta(days=services.BOOK_AHEAD_DAYS)).isoformat(),
+                                         "logo_url": r.logo.url if r.logo else ""}, status=400 if error else 200)
+
+
+@staff_only(WAITER, OWNER)
+def reservations_page(request):
+    return render(request, "reservations.html", {"restaurant": request.profile.restaurant})
+
+
+def reservation_json(x):
+    return {"id": x.id, "name": x.name, "phone": x.phone, "email": x.email, "party": x.party, "when": timezone.localtime(x.when).isoformat(),
+            "note": x.note, "status": x.status, "status_label": x.get_status_display(), "table": x.table.number if x.table_id else None}
+
+
+@require_GET
+@staff_only(WAITER, OWNER, api=True)
+def reservations_data(request):
+    r = request.profile.restaurant
+    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = Reservation.objects.filter(restaurant=r, when__gte=start).select_related("table")[:300]
+    return JsonResponse({"reservations": [reservation_json(x) for x in rows], "tables": list(r.tables.values_list("id", "number")),
+                         "book_url": request.build_absolute_uri(reverse("book", args=[r.slug])) if r.slug else ""})
+
+
+@require_POST
+@staff_only(WAITER, OWNER, api=True)
+@json_api
+def reservation_action(request, pk, action):
+    res = get_object_or_404(Reservation, pk=pk, restaurant=request.profile.restaurant)
+    tid = read_json(request).get("table_id")
+    table = get_object_or_404(Table, pk=tid, restaurant=request.profile.restaurant) if tid else None
+    services.update_reservation(res, action, table)
+    return JsonResponse({"ok": True})
+
+
+# ---------- platform (you, running the service) ----------
+
+def platform_only(view):
+    @wraps(view)
+    def wrapper(request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return redirect(f"{reverse('login')}?next={request.path}")
+        if not request.user.is_superuser:
+            raise PermissionDenied
+        return view(request, *args, **kwargs)
+    return wrapper
+
+
+@platform_only
+def platform_page(request):
+    return render(request, "platform.html", {"plans": PLANS})
+
+
+@platform_only
+def platform_data(request):
+    now, since = timezone.now(), timezone.now() - timedelta(days=30)
+    sales = dict(OrderItem.objects.filter(order__bill__status=Bill.PAID, order__bill__paid_at__gte=since).values_list("order__restaurant")
+                 .annotate(t=Sum(F("unit_price") * F("quantity"))).order_by())
+    orders = dict(Order.objects.filter(created_at__gte=since).exclude(status=Order.CANCELLED).values_list("restaurant").annotate(c=Count("id")).order_by())
+    last = dict(Order.objects.values_list("restaurant").annotate(m=Max("created_at")).order_by())
+    staff = dict(User.objects.filter(is_active=True, profile__isnull=False).values_list("profile__restaurant").annotate(c=Count("id")).order_by())
+    owners = {}
+    for u in User.objects.filter(profile__role=OWNER).select_related("profile").order_by("date_joined"):
+        owners.setdefault(u.profile.restaurant_id, u)
+    rows = []
+    for r in Restaurant.objects.annotate(n_tables=Count("tables")).order_by("-created_at", "-id"):
+        o = owners.get(r.id)
+        rows.append({"id": r.id, "name": r.name, "slug": r.slug, "status": r.status, "plan": r.plan, "plan_name": r.plan_info["name"], "price": r.plan_info["price"],
+                     "trial_ends": r.trial_ends.isoformat() if r.trial_ends else None, "paid_until": r.paid_until.isoformat() if r.paid_until else None,
+                     "days_left": r.days_left, "tables": r.n_tables, "staff": staff.get(r.id, 0), "orders_30": orders.get(r.id, 0),
+                     "sales_30": money(sales.get(r.id) or 0), "currency": r.currency,
+                     "last_order": seconds_since(last[r.id], now) if r.id in last else None,
+                     "owner": {"name": o.first_name or o.username, "username": o.username, "email": o.email} if o else None,
+                     "created": r.created_at.date().isoformat() if r.created_at else None})
+    month = timezone.localdate().replace(day=1)
+    pays = PlanPayment.objects.select_related("restaurant")
+    return JsonResponse({
+        "restaurants": rows,
+        "counts": {s: sum(1 for x in rows if x["status"] == s) for s in ("active", "trial", "expired", "suspended")},
+        "mrr": sum(x["price"] for x in rows if x["status"] == "active"),
+        "collected_month": money(pays.filter(paid_at__date__gte=month).aggregate(t=Sum("amount"))["t"] or 0),
+        "payments": [{"restaurant": p.restaurant.name, "plan": PLANS.get(p.plan, {}).get("name", p.plan), "months": p.months, "amount": money(p.amount),
+                      "reference": p.reference, "by": p.recorded_by, "age": seconds_since(p.paid_at, now)} for p in pays[:15]],
+        "plans": PLANS,
+    })
+
+
+@require_POST
+@platform_only
+@json_api
+def platform_action(request, pk, action):
+    r = get_object_or_404(Restaurant, pk=pk)
+    d = read_json(request)
+    if action == "pay":
+        services.record_plan_payment(r, d.get("plan") or r.plan, d.get("months", 1), d.get("amount"), d.get("reference"), request.user.username)
+    elif action == "plan":
+        services.set_plan(r, d.get("plan"))
+    elif action == "suspend":
+        services.set_suspended(r, True)
+    elif action == "resume":
+        services.set_suspended(r, False)
+    elif action == "trial":
+        services.extend_trial(r)
+    else:
+        raise services.OrderError("Unknown action.")
     return JsonResponse({"ok": True})
 
 

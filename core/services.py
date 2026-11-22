@@ -17,8 +17,8 @@ from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
-from .models import (Bill, Deal, Dish, Guest, Member, Order, OrderItem, Payment, QuizAnswer, QuizQuestion, Review,
-                     ServiceRequest, StaffProfile)
+from .models import (PLANS, TRIAL_DAYS, Bill, Deal, Dish, Guest, Member, Order, OrderItem, Payment, PlanPayment, QuizAnswer,
+                     QuizQuestion, Reservation, Restaurant, Review, ServiceRequest, StaffProfile, Table)
 
 MAX_LINES, MAX_QTY, MAX_SPLIT, MAX_TIP = 30, 20, 10, 30
 QUIZ_POINTS = 10
@@ -41,7 +41,7 @@ def notify(restaurant_id, table_id):
     layer = get_channel_layer()
 
     def send():
-        for group in (f"rest-{restaurant_id}", f"table-{table_id}"):
+        for group in [f"rest-{restaurant_id}"] + ([f"table-{table_id}"] if table_id else []):
             async_to_sync(layer.group_send)(group, {"type": "changed"})
 
     transaction.on_commit(send)
@@ -220,6 +220,8 @@ def place_order(table, lines, guest=None):
         raise OrderError("Your cart is empty.")
     if len(lines) > MAX_LINES:
         raise OrderError("Too many items in one order.")
+    if not table.restaurant.open_for_business:
+        raise OrderError("Ordering from the table is paused at this restaurant. Please ask a waiter.")
     bill = get_bill(table)
     if bill.status != Bill.OPEN:
         raise OrderError("The bill is being paid. Ask your waiter to add more.")
@@ -465,6 +467,7 @@ def add_staff(restaurant, username, name, role, password):
     User = get_user_model()
     if User.objects.filter(username__iexact=username).exists():
         raise OrderError("That username is taken.")
+    check_limit(restaurant, "staff")
     user = User(username=username, first_name=" ".join(str(name or "").split())[:150])
     _check_password(password, user)
     user.set_password(password)
@@ -487,6 +490,8 @@ def update_staff(actor, user, active=None, role=None, password=None):
         user.profile.role = role
         user.profile.save(update_fields=["role"])
         set_access(user, role)
+    if active and not user.is_active:
+        check_limit(user.profile.restaurant, "staff")
     if active is not None:
         user.is_active = bool(active)
     if password:
@@ -494,3 +499,167 @@ def update_staff(actor, user, active=None, role=None, password=None):
         user.set_password(password)
     user.save()
     return user
+
+
+# ---------- plans and signup ----------
+
+def check_limit(restaurant, kind):
+    """kind is "tables" or "staff". Raises when the plan has no room for one more."""
+    limit = restaurant.plan_info[kind]
+    if limit is None:
+        return
+    used = restaurant.tables.count() if kind == "tables" else get_user_model().objects.filter(profile__restaurant=restaurant, is_active=True).count()
+    if used >= limit:
+        what = "tables" if kind == "tables" else "active staff logins"
+        raise OrderError(f"The {restaurant.plan_info['name']} plan allows {limit} {what}. Upgrade the plan to add more.")
+
+
+def unique_slug(name):
+    from django.utils.text import slugify
+    base = slugify(name)[:50] or "restaurant"
+    slug, n = base, 2
+    while Restaurant.objects.filter(slug=slug).exists():
+        slug, n = f"{base}-{n}", n + 1
+    return slug
+
+
+def add_tables(restaurant, count):
+    """Adds tables laid out in rows of four on the floor map."""
+    start = restaurant.tables.count()
+    for i in range(start, start + count):
+        check_limit(restaurant, "tables")
+        row, col = divmod(i, 4)
+        Table.objects.create(restaurant=restaurant, number=i + 1, x=14 + col * 24, y=min(90, 20 + row * 22), round=(i % 2 == 1))
+
+
+@transaction.atomic
+def create_restaurant(name, owner_name, username, password, tables, email=""):
+    """Self-service signup: a restaurant on a free trial of the Pro plan, with its owner login and tables."""
+    name = " ".join(str(name or "").split())[:120]
+    if len(name) < 2:
+        raise OrderError("Enter your restaurant's name.")
+    try:
+        tables = int(tables)
+    except (TypeError, ValueError):
+        raise OrderError("Enter how many tables you have.")
+    plan = "pro"
+    if not 1 <= tables <= PLANS[plan]["tables"]:
+        raise OrderError(f"Start with 1 to {PLANS[plan]['tables']} tables. You can add more later.")
+    restaurant = Restaurant.objects.create(name=name, slug=unique_slug(name), plan=plan, trial_ends=timezone.localdate() + timedelta(days=TRIAL_DAYS))
+    user = add_staff(restaurant, username, owner_name, StaffProfile.OWNER, password)
+    email = str(email or "").strip().lower()
+    if email:
+        if "@" not in email or " " in email:
+            raise OrderError("That email does not look right.")
+        user.email = email
+        user.save(update_fields=["email"])
+    add_tables(restaurant, tables)
+    return restaurant, user
+
+
+@transaction.atomic
+def record_plan_payment(restaurant, plan, months, amount, reference="", by=""):
+    """Extends the restaurant's paid period. Today the platform records bank or cash payments; a gateway would call this too."""
+    if plan not in PLANS:
+        raise OrderError("Pick a plan.")
+    try:
+        months, amount = int(months), Decimal(str(amount))
+    except (TypeError, ValueError, ArithmeticError):
+        raise OrderError("Enter the months and the amount.")
+    if not 1 <= months <= 24 or amount < 0:
+        raise OrderError("Months must be 1 to 24 and the amount cannot be negative.")
+    restaurant = Restaurant.objects.select_for_update().get(pk=restaurant.pk)
+    today = timezone.localdate()
+    start = max(today, restaurant.paid_until or today)
+    end = start + timedelta(days=30 * months)
+    restaurant.plan, restaurant.paid_until, restaurant.suspended = plan, end, False
+    restaurant.save(update_fields=["plan", "paid_until", "suspended"])
+    PlanPayment.objects.create(restaurant=restaurant, plan=plan, months=months, amount=amount, reference=str(reference or "")[:120], recorded_by=str(by)[:150], period_end=end)
+    notify_restaurant(restaurant)
+    return restaurant
+
+
+def set_plan(restaurant, plan):
+    if plan not in PLANS:
+        raise OrderError("Pick a plan.")
+    restaurant.plan = plan
+    restaurant.save(update_fields=["plan"])
+    return restaurant
+
+
+def set_suspended(restaurant, suspended):
+    restaurant.suspended = bool(suspended)
+    restaurant.save(update_fields=["suspended"])
+    notify_restaurant(restaurant)
+    return restaurant
+
+
+def extend_trial(restaurant, days=TRIAL_DAYS):
+    restaurant.trial_ends = max(timezone.localdate(), restaurant.trial_ends or timezone.localdate()) + timedelta(days=days)
+    restaurant.save(update_fields=["trial_ends"])
+    return restaurant
+
+
+# ---------- reservations ----------
+
+MAX_PARTY, BOOK_AHEAD_DAYS = 30, 60
+
+
+def book_table(restaurant, name, phone, party, when, email="", note=""):
+    """A guest asks for a table. Staff confirm it; the restaurant is told live and the guest by email if they gave one."""
+    from datetime import datetime
+    if not restaurant.open_for_business:
+        raise OrderError("This restaurant is not taking bookings online right now. Please call them.")
+    name, phone = " ".join(str(name or "").split())[:80], " ".join(str(phone or "").split())[:30]
+    if len(name) < 2 or len(re.sub(r"\D", "", phone)) < 7:
+        raise OrderError("Enter your name and a phone number the restaurant can call.")
+    try:
+        party = int(party)
+        when = datetime.fromisoformat(str(when))
+    except (TypeError, ValueError):
+        raise OrderError("Pick a date, a time and how many people.")
+    if not 1 <= party <= MAX_PARTY:
+        raise OrderError(f"Online bookings are for 1 to {MAX_PARTY} people. Call the restaurant for bigger groups.")
+    if timezone.is_naive(when):
+        when = timezone.make_aware(when)
+    now = timezone.now()
+    if not now <= when <= now + timedelta(days=BOOK_AHEAD_DAYS):
+        raise OrderError(f"Pick a time from now up to {BOOK_AHEAD_DAYS} days ahead.")
+    email = str(email or "").strip().lower()
+    if email and ("@" not in email or " " in email):
+        raise OrderError("That email does not look right.")
+    since = now - timedelta(hours=1)
+    if Reservation.objects.filter(restaurant=restaurant, phone=phone, created_at__gte=since).count() >= 3:
+        raise OrderError("You already sent a few bookings. The restaurant will call you.")
+    res = Reservation.objects.create(restaurant=restaurant, name=name, phone=phone, email=email, party=party, when=when, note=str(note or "")[:300])
+    notify(restaurant.pk, None)
+    return res
+
+
+RES_NEXT = {
+    "confirm": ({Reservation.REQUESTED}, Reservation.CONFIRMED),
+    "seat": ({Reservation.REQUESTED, Reservation.CONFIRMED}, Reservation.SEATED),
+    "cancel": ({Reservation.REQUESTED, Reservation.CONFIRMED}, Reservation.CANCELLED),
+    "no_show": ({Reservation.CONFIRMED, Reservation.REQUESTED}, Reservation.NO_SHOW),
+}
+
+
+def update_reservation(res, action, table=None):
+    if action not in RES_NEXT:
+        raise OrderError("Unknown action.")
+    allowed, to = RES_NEXT[action]
+    if res.status not in allowed:
+        raise OrderError(f"This booking is already {res.get_status_display().lower()}.")
+    if table is not None and table.restaurant_id != res.restaurant_id:
+        raise PermissionDenied
+    res.status = to
+    if table is not None:
+        res.table = table
+    res.save(update_fields=["status", "table"])
+    if action == "confirm" and res.email:
+        r = res.restaurant
+        send_mail(f"Your table at {r.name} is confirmed",
+                  f"Hi {res.name},\n\nYour table for {res.party} at {r.name} on {timezone.localtime(res.when):%A %d %B at %H:%M} is confirmed.\n\nSee you soon.\n{r.name}",
+                  settings.DEFAULT_FROM_EMAIL, [res.email], fail_silently=True)
+    notify(res.restaurant_id, None)
+    return res

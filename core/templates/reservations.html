@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Reservations · {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}ops{% endblock %}
+{% block body %}
+{% include "_rail.html" with active="reservations" %}
+<div class="pagehead"><div><h1>Reservations</h1><p id="sub">Bookings from today on. New requests arrive here live.</p></div><a class="btn ghost sm" id="booklink" target="_blank" rel="noopener" hidden>Open booking page</a></div>
+<main class="page" style="padding-top: 20px" id="main"></main>
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+let D = null;
+const CLS = { requested: 'help', confirmed: 'ordering', seated: 'eating', cancelled: 'free', no_show: 'free' };
+const dayKey = (iso) => iso.slice(0, 10);
+const dayLabel = (key) => { const d = new Date(key + 'T00:00'), t = new Date(); t.setHours(0, 0, 0, 0); const n = Math.round((d - t) / 864e5); return n === 0 ? 'Today' : n === 1 ? 'Tomorrow' : d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' }); };
+const go = (x, action, body, done) => act(() => api(`/staff/reservations/${x.id}/${action}/`, body || {}).then(() => toast(done)), refresh);
+
+function row(x) {
+  const open = x.status === 'requested' || x.status === 'confirmed';
+  return h('div', { class: 'ticket', style: 'animation:none;border-left-color:' + (x.status === 'requested' ? 'var(--chi)' : x.status === 'confirmed' ? 'var(--acc)' : 'var(--line)') + (open ? '' : ';opacity:.6') },
+    h('div', { class: 'spread' },
+      h('div', { class: 'row', style: 'gap:14px' }, h('span', { class: 'num', style: 'font-size:22px;font-weight:650' }, x.when.slice(11, 16)),
+        h('div', { class: 'col', style: 'gap:0' }, h('span', { class: 'b' }, x.name + ' · ' + x.party + (x.party === 1 ? ' person' : ' people')), h('span', { class: 'muted sm' }, x.phone + (x.email ? ' · ' + x.email : '')))),
+      h('span', { class: 'row', style: 'gap:8px' }, x.table ? h('span', { class: 'pill' }, 'Table ' + x.table) : null, h('span', { class: 'st ' + CLS[x.status] }, x.status_label))),
+    x.note ? h('span', { class: 'tag al', style: 'align-self:flex-start' }, x.note) : null,
+    open ? h('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap' },
+      x.status === 'requested' ? h('button', { class: 'btn sm', onclick: () => go(x, 'confirm', {}, 'Confirmed' + (x.email ? ' and emailed' : '')) }, 'Confirm') : null,
+      h('select', { 'aria-label': 'Seat at table', style: 'padding:6px 8px', onchange: (e) => e.target.value && go(x, 'seat', { table_id: +e.target.value }, 'Seated') },
+        h('option', { value: '' }, 'Seat at table…'), D.tables.map(([id, n]) => h('option', { value: id }, 'Table ' + n))),
+      h('span', { class: 'grow' }),
+      h('button', { class: 'btn ghost sm', onclick: () => go(x, 'no_show', {}, 'Marked no-show') }, 'No-show'),
+      h('button', { class: 'btn red sm', onclick: () => { if (confirm('Cancel ' + x.name + "'s booking?")) go(x, 'cancel', {}, 'Cancelled'); } }, 'Cancel')) : null);
+}
+function render() {
+  const days = {};
+  D.reservations.forEach((x) => (days[dayKey(x.when)] = days[dayKey(x.when)] || []).push(x));
+  const waiting = D.reservations.filter((x) => x.status === 'requested').length;
+  $('#sub').textContent = waiting ? waiting + (waiting === 1 ? ' booking needs' : ' bookings need') + ' confirming.' : 'Bookings from today on. New requests arrive here live.';
+  if (D.book_url) { $('#booklink').href = D.book_url; $('#booklink').hidden = false; }
+  $('#main').replaceChildren(...(Object.keys(days).length ? Object.entries(days).map(([k, list]) => h('section', { class: 'col', style: 'gap:10px;margin-bottom:22px;max-width:900px' },
+    h('h2', { class: 'sm muted', style: 'text-transform:uppercase;letter-spacing:.06em;font-weight:650' }, dayLabel(k) + ' · ' + list.filter((x) => x.status !== 'cancelled' && x.status !== 'no_show').reduce((n, x) => n + x.party, 0) + ' guests'),
+    list.map(row))) : [h('div', { class: 'empty', style: 'max-width:900px' }, 'No bookings yet. Share your booking link on Instagram, Google Maps and WhatsApp.')]));
+}
+async function refresh() { D = await api('/staff/reservations/data/'); render(); }
+live('/ws/staff/', refresh, 15000);
+</script>
+{% endblock %}

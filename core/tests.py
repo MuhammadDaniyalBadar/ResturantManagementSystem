@@ -1,4 +1,5 @@
 import json
+from datetime import date, timedelta
 
 from asgiref.sync import sync_to_async
 from channels.routing import URLRouter
@@ -13,7 +14,7 @@ from .routing import websocket_urlpatterns
 
 
 def make_restaurant(name):
-    r = Restaurant.objects.create(name=name)
+    r = Restaurant.objects.create(name=name, slug=name.lower(), paid_until=date.today() + timedelta(days=30))
     cat = Category.objects.create(restaurant=r, name="Mains")
     curry = Dish.objects.create(restaurant=r, category=cat, name="Curry", price=500, station="Curry", prep_minutes=18)
     DishSize.objects.create(dish=curry, label="Half", price=300)
@@ -683,3 +684,159 @@ class Beta2(TestCase):
         self.assertEqual(owner.get("/admin/core/staffprofile/").status_code, 403)
         req_form = owner.get("/admin/core/servicerequest/add/").context["adminform"].form
         self.assertEqual({u.profile.restaurant_id for u in req_form.fields["assigned"].queryset}, {self.r.id})
+
+
+class Beta3(TestCase):
+    """Signup, plans and limits, the platform console, branding, reservations."""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.r, self.table, self.curry, self.naan, self.users = make_restaurant("A")
+
+    def post(self, client, path, data=None):
+        return client.post(path, json.dumps(data or {}), content_type="application/json")
+
+    def signup(self, c=None, **over):
+        data = {"restaurant": "Karachi Grill", "name": "Hina", "username": "hina", "email": "hina@grill.pk", "password": "Grill-Pass-77", "tables": "5"}
+        data.update(over)
+        return (c or Client()).post("/signup/", data)
+
+    def test_signup_creates_a_restaurant_on_trial_with_owner_and_tables(self):
+        c = Client()
+        r = self.signup(c)
+        self.assertEqual(r.status_code, 302)
+        rest = Restaurant.objects.get(name="Karachi Grill")
+        self.assertEqual((rest.status, rest.plan, rest.slug, rest.tables.count(), rest.days_left), ("trial", "pro", "karachi-grill", 5, 14))
+        owner = User.objects.get(username="hina")
+        self.assertEqual((owner.profile.restaurant, owner.profile.role, owner.email, owner.is_staff), (rest, "owner", "hina@grill.pk", True))
+        data = c.get("/owner/data/").json()
+        self.assertEqual([s["done"] for s in data["setup"]], [False, False, False, False])
+        self.assertEqual(c.get("/admin/core/dish/").context["cl"].queryset.count(), 0)  # sees none of restaurant A's dishes
+        self.assertEqual(self.signup(Client(), restaurant="Karachi Grill", username="hina2").status_code, 302)
+        self.assertEqual(Restaurant.objects.get(name="Karachi Grill", slug="karachi-grill-2").tables.count(), 5)
+
+    def test_signup_rejects_bad_input_and_saves_nothing(self):
+        for over, msg in [({"restaurant": ""}, "Enter your restaurant"), ({"tables": "0"}, "1 to 40"), ({"tables": "x"}, "how many"),
+                          ({"password": "123"}, "too short"), ({"username": self.users["owner"].username}, "taken"), ({"email": "nope"}, "email")]:
+            r = self.signup(**over)
+            self.assertEqual(r.status_code, 400, over)
+            self.assertContains(r, msg, status_code=400)
+        self.assertFalse(Restaurant.objects.filter(name="Karachi Grill").exists())
+        self.assertFalse(User.objects.filter(username="hina").exists())
+        self.assertEqual(self.signup(website="spam").status_code, 400)  # bot trap
+
+    def test_signups_are_rate_limited_per_address(self):
+        for i in range(5):
+            self.assertEqual(self.signup(username=f"own{i}", restaurant=f"R{i}").status_code, 302)
+        self.assertContains(self.signup(username="own9", restaurant="R9"), "Too many sign-ups", status_code=400)
+
+    def test_expired_or_paused_restaurant_stops_guest_orders_and_bookings(self):
+        line = [{"dish_id": self.naan.id, "quantity": 1}]
+        self.r.paid_until, self.r.trial_ends = date.today() - timedelta(days=1), None
+        self.r.save()
+        self.assertEqual(self.r.status, "expired")
+        with self.assertRaises(services.OrderError):
+            services.place_order(self.table, line)
+        with self.assertRaises(services.OrderError):
+            services.book_table(self.r, "Ali", "0300 1234567", 2, (timezone_now() + timedelta(days=1)).isoformat())
+        services.record_plan_payment(self.r, "starter", 2, 9998, "IBFT-1", "platform")
+        self.r.refresh_from_db()
+        self.assertEqual((self.r.status, self.r.plan, self.r.paid_until), ("active", "starter", date.today() + timedelta(days=60)))
+        services.place_order(self.table, line)
+        services.record_plan_payment(self.r, "starter", 1, 4999)  # a second payment extends from the end, not from today
+        self.r.refresh_from_db()
+        self.assertEqual(self.r.paid_until, date.today() + timedelta(days=90))
+        services.set_suspended(self.r, True)
+        self.assertEqual(Restaurant.objects.get(pk=self.r.pk).status, "suspended")
+        with self.assertRaises(services.OrderError):
+            services.place_order(Table.objects.get(pk=self.table.pk), line)
+
+    def test_plan_limits_on_tables_and_staff(self):
+        services.set_plan(self.r, "starter")  # 10 tables, 5 staff
+        services.add_tables(self.r, 9)
+        with self.assertRaises(services.OrderError):
+            services.add_tables(self.r, 1)
+        services.set_access(self.users["owner"], "owner")
+        owner = Client()
+        owner.force_login(self.users["owner"])
+        self.assertFalse(owner.get("/admin/core/table/").context["has_add_permission"])
+        self.assertEqual(owner.get("/admin/core/table/add/").status_code, 403)
+        services.add_staff(self.r, "waiter2", "", "waiter", "Str0ng-pass")
+        services.add_staff(self.r, "waiter3", "", "waiter", "Str0ng-pass")
+        r = self.post(owner, "/owner/team/data/", {"username": "waiter4", "role": "waiter", "password": "Str0ng-pass"})
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("allows 5 active staff", r.json()["error"])
+        services.set_plan(self.r, "enterprise")
+        self.assertEqual(self.post(owner, "/owner/team/data/", {"username": "waiter4", "role": "waiter", "password": "Str0ng-pass"}).status_code, 200)
+        services.add_tables(self.r, 5)
+
+    def test_platform_console_is_only_for_the_platform(self):
+        boss = User.objects.create_superuser("platform", password="Platform-pass-1")
+        c = Client()
+        c.force_login(boss)
+        self.assertEqual(c.get("/").url, "/platform/")
+        data = c.get("/platform/data/").json()
+        row = next(x for x in data["restaurants"] if x["id"] == self.r.id)
+        self.assertEqual((row["status"], row["tables"], row["staff"]), ("active", 1, 3))
+        self.assertEqual(self.post(c, f"/platform/restaurants/{self.r.id}/pay/", {"plan": "enterprise", "months": 3, "amount": 74997, "reference": "TX9"}).status_code, 200)
+        self.assertEqual(self.post(c, f"/platform/restaurants/{self.r.id}/suspend/").status_code, 200)
+        self.assertEqual(Restaurant.objects.get(pk=self.r.pk).status, "suspended")
+        self.assertEqual(self.post(c, f"/platform/restaurants/{self.r.id}/resume/").status_code, 200)
+        self.assertEqual(self.post(c, f"/platform/restaurants/{self.r.id}/pay/", {"months": 0, "amount": 1}).status_code, 400)
+        data = c.get("/platform/data/").json()
+        self.assertEqual((data["payments"][0]["amount"], data["payments"][0]["reference"], data["mrr"]), ("74997.00", "TX9", 24999))
+        for user in (self.users["owner"], self.users["waiter"]):
+            other = Client()
+            other.force_login(user)
+            self.assertEqual(other.get("/platform/").status_code, 403)
+            self.assertEqual(self.post(other, f"/platform/restaurants/{self.r.id}/suspend/").status_code, 403)
+        self.assertEqual(Client().get("/platform/data/").status_code, 302)
+
+    def test_owner_sets_the_brand_and_guests_see_it(self):
+        owner = Client()
+        owner.force_login(self.users["owner"])
+        form = {"name": "Grill A", "tagline": "Fire and smoke", "brand_color": "#e4572e", "currency": "Rs", "service_percent": "5", "tax_percent": "16",
+                "wifi_name": "GrillA", "wifi_password": "x", "reward_rate": "10", "reward_goal": "200", "reward_text": "Free tea"}
+        self.assertContains(owner.post("/owner/settings/", form), "Saved")
+        page = Client().get(f"/t/{self.table.code}/")
+        self.assertContains(page, "--acc: #e4572e")
+        self.assertContains(page, "Grill A")
+        self.assertContains(owner.post("/owner/settings/", dict(form, brand_color="#zz;}{x")), "Use a colour like")
+        self.assertContains(owner.post("/owner/settings/", dict(form, brand_color="red;}body{display:none")), "at most 7")
+        self.assertEqual(Restaurant.objects.get(pk=self.r.pk).brand_color, "#e4572e")
+        waiter = Client()
+        waiter.force_login(self.users["waiter"])
+        self.assertEqual(waiter.get("/owner/settings/").status_code, 403)
+
+    def test_booking_flow_from_guest_to_staff(self):
+        when = (timezone_now() + timedelta(days=2)).replace(hour=20, minute=0)
+        r = Client().post(f"/book/{self.r.slug}/", {"name": "Ali", "phone": "0300 1234567", "email": "ali@mail.pk", "party": "4",
+                                                    "date": when.strftime("%Y-%m-%d"), "time": "20:00", "note": "Birthday"})
+        self.assertContains(r, "Thanks, Ali.")
+        for bad in ({"name": "A"}, {"party": "0"}, {"date": "2000-01-01"}, {"phone": "12"}):
+            data = {"name": "Ali", "phone": "0300 1234567", "party": "2", "date": when.strftime("%Y-%m-%d"), "time": "20:00"}
+            data.update(bad)
+            self.assertEqual(Client().post(f"/book/{self.r.slug}/", data).status_code, 400, bad)
+        waiter = Client()
+        waiter.force_login(self.users["waiter"])
+        rows = waiter.get("/staff/reservations/data/").json()["reservations"]
+        self.assertEqual([(x["name"], x["party"], x["status"], x["note"]) for x in rows], [("Ali", 4, "requested", "Birthday")])
+        rid = rows[0]["id"]
+        self.assertEqual(self.post(waiter, f"/staff/reservations/{rid}/confirm/").status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("is confirmed", mail.outbox[0].subject)
+        self.assertEqual(self.post(waiter, f"/staff/reservations/{rid}/confirm/").status_code, 400)
+        other_table = make_restaurant("B")[1]
+        self.assertEqual(self.post(waiter, f"/staff/reservations/{rid}/seat/", {"table_id": other_table.id}).status_code, 404)
+        self.assertEqual(self.post(waiter, f"/staff/reservations/{rid}/seat/", {"table_id": self.table.id}).status_code, 200)
+        self.assertEqual(waiter.get("/staff/reservations/data/").json()["reservations"][0]["table"], 1)
+        kitchen = Client()
+        kitchen.force_login(self.users["kitchen"])
+        self.assertEqual(kitchen.get("/staff/reservations/data/").status_code, 403)
+        self.assertEqual(Client().get("/book/nope/").status_code, 404)
+
+
+def timezone_now():
+    from django.utils import timezone
+    return timezone.now()

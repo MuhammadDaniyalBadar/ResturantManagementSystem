@@ -7,11 +7,13 @@
 {{ table.code|json_script:"code-data" }}
 {{ restaurant.name|json_script:"rname-data" }}
 {{ table.number|json_script:"tnum-data" }}
+{{ logo_url|json_script:"logo-data" }}
 {% endblock %}
 {% block script %}
 <script>
 const $ = (s) => document.querySelector(s);
 const MENU = JSON.parse($('#menu-data').textContent), CODE = JSON.parse($('#code-data').textContent);
+const LOGO = JSON.parse($('#logo-data').textContent);
 const RNAME = JSON.parse($('#rname-data').textContent), TNUM = JSON.parse($('#tnum-data').textContent);
 const CUR = MENU.currency;
 const DISHES = MENU.categories.flatMap((c) => c.dishes.map((d) => ({ ...d, cat: c.name })));
@@ -69,7 +71,7 @@ const copyText = async (t) => { try { await navigator.clipboard.writeText(t); to
 /* ---------- pieces ---------- */
 function topbar() {
   return h('div', { class: 'row', style: 'padding:24px 18px 6px;gap:12px;flex:none' },
-    h('div', { class: 'logo' }, initials(RNAME)),
+    LOGO ? h('img', { class: 'logo', src: LOGO, alt: '', style: 'object-fit:cover' }) : h('div', { class: 'logo' }, initials(RNAME)),
     h('div', { class: 'grow' }, h('div', { class: 'bb', style: 'font-size:16px;line-height:1.1' }, RNAME),
       h('div', { class: 'muted sm' }, 'Table ' + TNUM + ' · ' + (S.guests.length ? S.guests.join(', ') : 'Dine-in'))),
     S.orders.length ? h('button', { class: 'chip on sm', onclick: () => go('status') }, h('span', { class: 'livedot', style: 'width:8px;height:8px' }), statusWord()) : null,

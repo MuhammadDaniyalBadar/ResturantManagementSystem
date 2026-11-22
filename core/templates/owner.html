@@ -42,7 +42,12 @@ const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);
 function render(d) {
   const cur = d.currency, best = d.best, top = Math.max(1, ...best.map((b) => b.qty));
   const live = d.tables.map((t) => h('div', { class: 'row', style: 'gap:10px' }, h('span', { class: 'bb', style: 'min-width:34px' }, 'T' + t.n), h('span', { class: 'st ' + t.status }, t.status), h('span', { class: 'muted sm grow', style: 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, t.guests.length ? t.guests.join(', ') : ''), t.bill ? h('span', { class: 'num b' }, money(cur, t.bill.total)) : null));
+  const setup = d.setup.length ? h('section', { class: 'card', style: 'padding:20px;gap:12px;margin-bottom:18px;border-color:var(--acc)' },
+    h('div', { class: 'spread' }, h('h2', { style: 'font-size:16px;font-weight:650' }, 'Get your restaurant ready'), h('span', { class: 'muted sm' }, d.setup.filter((s) => s.done).length + ' of ' + d.setup.length + ' done')),
+    h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px' }, d.setup.map((s, i) => h('a', { href: s.url, class: 'row', style: 'gap:10px;padding:12px;border:1px solid var(--line);border-radius:10px;text-decoration:none;color:var(--fg)' + (s.done ? ';opacity:.55' : '') },
+      h('span', { class: 'tag ' + (s.done ? 'em' : ''), style: 'min-width:22px;text-align:center' }, s.done ? '✓' : String(i + 1)), h('span', { class: 'b' }, s.label))))) : null;
   $('#main').replaceChildren(
+    ...(setup ? [setup] : []),
     h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px' },
       kpi('Tables in use', d.tables_in_use + ' / ' + d.tables_total, 0), kpi('Orders today', d.orders_today, 1), kpi('Sales today', money(cur, d.sales_today), 2), kpi('Average prep time', mins(d.avg_prep), 3)),
     h('div', { style: 'display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;margin-top:18px' },

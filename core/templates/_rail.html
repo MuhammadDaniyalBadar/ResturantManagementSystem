@@ -1,18 +1,28 @@
 <aside class="rail">
-  <div class="rail-brand"><div class="logo">{{ restaurant.initials }}</div><div><b>{{ restaurant.name }}</b><span>{{ request.user.username }} · {{ request.user.profile.role|title }}</span></div></div>
+  <div class="rail-brand">{% if restaurant.logo %}<img class="logo" src="{{ restaurant.logo.url }}" alt="" style="object-fit: cover">{% else %}<div class="logo">{{ restaurant.initials }}</div>{% endif %}<div><b>{{ restaurant.name }}</b><span>{{ request.user.username }} · {{ request.user.profile.role|title }}</span></div></div>
   <div class="label">Operations</div>
   <nav class="rail-nav">
     {% if request.user.profile.role != "kitchen" %}<a href="{% url 'staff' %}" class="{% if active == 'staff' %}on{% endif %}">Service desk</a>{% endif %}
     {% if active == "staff" %}<div class="rail-sub" id="tabs"></div>{% endif %}
+    {% if request.user.profile.role != "kitchen" %}<a href="{% url 'reservations' %}" class="{% if active == 'reservations' %}on{% endif %}">Reservations</a>{% endif %}
     {% if request.user.profile.role != "waiter" %}<a href="{% url 'kitchen' %}" class="{% if active == 'kitchen' %}on{% endif %}">Kitchen display</a>{% endif %}
     {% if request.user.profile.role == "owner" %}
     <a href="{% url 'owner' %}" class="{% if active == 'owner' %}on{% endif %}">Overview</a>
     <a href="{% url 'qr' %}" class="{% if active == 'qr' %}on{% endif %}">Table QR codes</a>
     <a href="{% url 'team' %}" class="{% if active == 'team' %}on{% endif %}">Team</a>
+    <a href="{% url 'settings' %}" class="{% if active == 'settings' %}on{% endif %}">Settings and plan</a>
     <a href="/admin/">Menu and tables</a>
     {% endif %}
   </nav>
   <div class="rail-foot">
+    {% with st=restaurant.status %}{% if st != "active" %}
+    <div class="planbox {{ st }}">
+      {% if st == "trial" %}<b>Free trial</b><span>{{ restaurant.days_left }} day{{ restaurant.days_left|pluralize }} left on {{ restaurant.plan_info.name }}</span>
+      {% elif st == "suspended" %}<b>Account paused</b><span>Guests cannot order. Contact us to resume.</span>
+      {% else %}<b>Plan expired</b><span>Guests cannot order. Renew to switch ordering back on.</span>{% endif %}
+      {% if request.user.profile.role == "owner" %}<a href="{% url 'settings' %}">See plan</a>{% endif %}
+    </div>
+    {% endif %}{% endwith %}
     <span class="rail-live"><span class="livedot"></span>Live</span>
     {% block railextra %}{% endblock %}
     <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
