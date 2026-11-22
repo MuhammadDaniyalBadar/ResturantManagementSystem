@@ -193,7 +193,7 @@ async function place() {
 }
 function placedView() {
   return h('div', { class: 'screen scr', style: 'align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center' },
-    h('div', { class: 'pop', style: 'width:104px;height:104px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 12px rgba(76,141,255,.14),0 20px 44px rgba(255,138,31,.45);color:#fff' },
+    h('div', { class: 'pop', style: 'width:104px;height:104px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 12px rgba(76,141,255,.14),0 20px 44px rgba(76,141,255,.35);color:#fff' },
       svg('<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
     h('h1', { class: 'd rise', style: '--i:2;font-size:40px;font-weight:700' }, 'Order ', h('span', { class: 'gold' }, 'placed')),
     h('p', { class: 'muted rise', style: '--i:3' }, 'Table ' + TNUM + '. Your waiter has it.'),
