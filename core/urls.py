@@ -44,6 +44,9 @@ urlpatterns = [
     path("owner/data/", views.owner_data, name="owner_data"),
     path("owner/team/", views.team_page, name="team"),
     path("owner/settings/", views.settings_page, name="settings"),
+    path("owner/inventory/", views.inventory_page, name="inventory"),
+    path("owner/inventory/data/", views.inventory_data, name="inventory_data"),
+    path("owner/inventory/<int:pk>/", views.inventory_adjust, name="inventory_adjust"),
     path("owner/team/data/", views.team_data, name="team_data"),
     path("owner/team/<int:pk>/", views.team_member, name="team_member"),
 ]

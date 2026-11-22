@@ -55,12 +55,19 @@ class SizeInline(ScopedChoices, admin.TabularInline):
     extra = 1
 
 
+class RecipeInline(ScopedChoices, admin.TabularInline):
+    model = models.RecipeItem
+    extra = 1
+    verbose_name = "ingredient used per portion"
+    verbose_name_plural = "recipe (stock is taken when the order goes to the kitchen)"
+
+
 @admin.register(models.Dish)
 class DishAdmin(Scoped, admin.ModelAdmin):
     list_display = ("name", "category", "price", "station", "prep_minutes", "art", "photo", "featured", "available")
     list_filter = ("restaurant", "category", "station", "available")
     list_editable = ("available",)
-    inlines = [SizeInline]
+    inlines = [SizeInline, RecipeInline]
 
 
 @admin.register(models.Table)
@@ -132,5 +139,5 @@ class ReviewAdmin(Scoped, admin.ModelAdmin):
     list_display = ("stars", "comment", "guest", "created_at")
 
 
-for model in (models.Category, models.ServiceRequest, models.Deal, models.Member, models.QuizQuestion):
+for model in (models.Category, models.ServiceRequest, models.Deal, models.Member, models.QuizQuestion, models.Ingredient, models.Reservation):
     admin.site.register(model, type(model.__name__ + "Admin", (Scoped, admin.ModelAdmin), {}))

@@ -3,7 +3,7 @@
 {% block bodyclass %}ops{% endblock %}
 {% block body %}
 {% include "_rail.html" with active="kitchen" %}
-<div class="pagehead"><div><h1>Kitchen display</h1><p>Tickets by station, with a timer from the moment the waiter sends them.</p></div><span class="pill" id="open">0 cooking</span></div>
+<div class="pagehead"><div><h1>Kitchen display</h1><p>Tickets by station, with a timer from the moment the waiter sends them.</p></div><span class="row" style="gap: 8px"><span class="pill" id="low" hidden style="color: var(--saf); border-color: var(--saf)"></span><span class="pill" id="open">0 cooking</span></span></div>
 <main class="page" style="padding-top: 20px"><div class="board" id="board"></div></main>
 {% endblock %}
 {% block script %}
@@ -26,6 +26,7 @@ function ticket(station, t, n) {
 async function refresh() {
   const d = await api('/kitchen/data/');
   const n = d.stations.reduce((t, s) => t + s.tickets.length, 0);
+  $('#low').hidden = !d.low.length; $('#low').textContent = 'Low stock: ' + d.low.map((x) => x.name).join(', ');
   $('#open').textContent = n + ' cooking' + (d.waiting ? ' · ' + d.waiting + ' waiting for the waiter' : '');
   $('#board').replaceChildren(...d.stations.map((s) => h('div', { class: 'col3' },
     h('div', { class: 'spread' }, h('h2', { class: 'd', style: 'font-size:26px;font-weight:700' }, s.name), h('span', { class: 'pill' }, s.tickets.length + (s.tickets.length === 1 ? ' ticket' : ' tickets'))),

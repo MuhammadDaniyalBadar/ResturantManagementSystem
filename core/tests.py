@@ -840,3 +840,71 @@ class Beta3(TestCase):
 def timezone_now():
     from django.utils import timezone
     return timezone.now()
+
+
+class Inventory(TestCase):
+    def setUp(self):
+        from .models import Ingredient, RecipeItem
+        self.r, self.table, self.curry, self.naan, self.users = make_restaurant("A")
+        self.paneer = Ingredient.objects.create(restaurant=self.r, name="Paneer", unit="g", stock=500, low_at=200)
+        self.dough = Ingredient.objects.create(restaurant=self.r, name="Dough", unit="g", stock=1000, low_at=100)
+        RecipeItem.objects.create(dish=self.curry, ingredient=self.paneer, amount=150)  # per portion
+        RecipeItem.objects.create(dish=self.naan, ingredient=self.dough, amount=100)
+        self.half = self.curry.sizes.get(label="Half")
+
+    def stock(self, ing):
+        ing.refresh_from_db()
+        return ing.stock
+
+    def test_sending_to_the_kitchen_takes_stock_and_cancelling_gives_it_back(self):
+        order = services.place_order(self.table, [{"dish_id": self.curry.id, "size_id": self.half.id, "quantity": 2}, {"dish_id": self.naan.id, "quantity": 3}])
+        self.assertEqual((self.stock(self.paneer), self.stock(self.dough)), (500, 1000))  # placing alone takes nothing
+        services.advance_order(order, "waiter")
+        self.assertEqual((self.stock(self.paneer), self.stock(self.dough)), (200, 700))
+        services.remove_item(order.items.get(dish=self.naan), "waiter")
+        self.assertEqual(self.stock(self.dough), 1000)
+        services.cancel_order(order, "waiter")
+        self.assertEqual(self.stock(self.paneer), 500)
+
+    def test_dish_sells_out_when_an_ingredient_runs_out_and_returns_on_restock(self):
+        from .models import Dish
+        order = services.place_order(self.table, [{"dish_id": self.curry.id, "size_id": self.half.id, "quantity": 3}])
+        services.advance_order(order, "waiter")  # 500 - 450 = 50 g left, less than one portion
+        curry = Dish.objects.get(pk=self.curry.pk)
+        self.assertEqual((curry.available, curry.auto_out), (False, True))
+        self.assertEqual(services.low_stock(self.r)[0]["name"], "Paneer")
+        with self.assertRaises(services.OrderError):
+            services.place_order(self.table, [{"dish_id": self.curry.id, "size_id": self.half.id, "quantity": 1}])
+        services.adjust_stock(self.paneer, add=1000)
+        self.assertTrue(Dish.objects.get(pk=self.curry.pk).available)
+        # a dish a person marked sold out stays sold out after a restock
+        services.set_available(Dish.objects.get(pk=self.curry.pk), False)
+        services.adjust_stock(self.paneer, add=10)
+        self.assertFalse(Dish.objects.get(pk=self.curry.pk).available)
+
+    def test_owner_inventory_page_adds_counts_and_rejects_nonsense(self):
+        owner = Client()
+        owner.force_login(self.users["owner"])
+        post = lambda path, d: owner.post(path, json.dumps(d), content_type="application/json")
+        r = post("/owner/inventory/data/", {"name": "Lassi mix", "unit": "ml", "stock": "2000", "low_at": "500"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Lassi mix", [i["name"] for i in r.json()["ingredients"]])
+        self.assertEqual(post("/owner/inventory/data/", {"name": "paneer", "unit": "g"}).status_code, 400)  # duplicate
+        self.assertEqual(post("/owner/inventory/data/", {"name": "Salt", "unit": "kg"}).status_code, 400)
+        self.assertEqual(post(f"/owner/inventory/{self.paneer.id}/", {"count": "320.5", "low_at": "100"}).status_code, 200)
+        self.assertEqual(self.stock(self.paneer), Decimal("320.50"))
+        for bad in ({"add": "lots"}, {"count": "NaN"}, {"add": "1e30"}):
+            self.assertEqual(post(f"/owner/inventory/{self.paneer.id}/", bad).status_code, 400, bad)
+        row = next(i for i in owner.get("/owner/inventory/data/").json()["ingredients"] if i["name"] == "Paneer")
+        self.assertEqual((row["low"], row["dishes"][0]["portions"]), (False, 2))
+        other = make_restaurant("B")[0]
+        from .models import Ingredient
+        theirs = Ingredient.objects.create(restaurant=other, name="Rice", stock=1)
+        self.assertEqual(post(f"/owner/inventory/{theirs.id}/", {"add": "5"}).status_code, 404)
+        waiter = Client()
+        waiter.force_login(self.users["waiter"])
+        self.assertEqual(waiter.get("/owner/inventory/data/").status_code, 403)
+        kitchen = Client()
+        kitchen.force_login(self.users["kitchen"])
+        services.adjust_stock(self.paneer, count=50)
+        self.assertEqual([x["name"] for x in kitchen.get("/kitchen/data/").json()["low"]], ["Paneer"])

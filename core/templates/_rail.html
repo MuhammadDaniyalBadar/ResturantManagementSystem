@@ -9,6 +9,7 @@
     {% if request.user.profile.role == "owner" %}
     <a href="{% url 'owner' %}" class="{% if active == 'owner' %}on{% endif %}">Overview</a>
     <a href="{% url 'qr' %}" class="{% if active == 'qr' %}on{% endif %}">Table QR codes</a>
+    <a href="{% url 'inventory' %}" class="{% if active == 'inventory' %}on{% endif %}">Inventory</a>
     <a href="{% url 'team' %}" class="{% if active == 'team' %}on{% endif %}">Team</a>
     <a href="{% url 'settings' %}" class="{% if active == 'settings' %}on{% endif %}">Settings and plan</a>
     <a href="/admin/">Menu and tables</a>

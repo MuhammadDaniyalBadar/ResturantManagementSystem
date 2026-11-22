@@ -163,6 +163,7 @@ class Dish(models.Model):
     available = models.BooleanField(default=True)
     art = models.CharField(max_length=12, blank=True, choices=ART, help_text="Illustration shown on the menu")
     featured = models.BooleanField(default=False, help_text="Shown as the Chef's pick on the menu")
+    auto_out = models.BooleanField(default=False, editable=False)  # sold out by inventory, comes back on restock
 
     class Meta:
         ordering = ["category__position", "name"]
@@ -260,6 +261,7 @@ class Order(models.Model):
     served_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     cancelled_by = models.CharField(max_length=60, blank=True, help_text="Who cancelled it: a staff username or 'guest'")
+    stock_taken = models.BooleanField(default=False, editable=False)  # ingredients were deducted when it went to the kitchen
 
     class Meta:
         ordering = ["created_at"]
@@ -393,3 +395,30 @@ class Reservation(models.Model):
 
     def __str__(self):
         return f"{self.name} x{self.party} {self.when:%d %b %H:%M}"
+
+
+class Ingredient(models.Model):
+    UNITS = [("g", "grams"), ("ml", "millilitres"), ("pcs", "pieces")]
+
+    restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="ingredients")
+    name = models.CharField(max_length=80)
+    unit = models.CharField(max_length=3, choices=UNITS, default="g")
+    stock = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    low_at = models.DecimalField(max_digits=12, decimal_places=2, default=0, help_text="Warn the kitchen and owner at or below this")
+
+    class Meta:
+        ordering = ["name"]
+        constraints = [models.UniqueConstraint(fields=["restaurant", "name"], name="one_ingredient_name_per_restaurant")]
+
+    def __str__(self):
+        return f"{self.name} ({self.unit})"
+
+
+class RecipeItem(models.Model):
+    """How much of an ingredient one portion of a dish uses."""
+    dish = models.ForeignKey(Dish, on_delete=models.CASCADE, related_name="recipe")
+    ingredient = models.ForeignKey(Ingredient, on_delete=models.CASCADE, related_name="uses")
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.amount} {self.ingredient.unit} {self.ingredient.name}"

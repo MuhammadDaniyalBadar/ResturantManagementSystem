@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Inventory · {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}ops{% endblock %}
+{% block body %}
+{% include "_rail.html" with active="inventory" %}
+<div class="pagehead"><div><h1>Inventory</h1><p>Stock goes down when an order is sent to the kitchen and back up if it is cancelled. A dish sells out by itself when an ingredient runs out, and returns when you restock.</p></div></div>
+<main class="page" style="padding-top: 20px">
+  <div style="display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 20px; align-items: start" id="grid">
+    <section class="card" style="padding: 0; overflow-x: auto"><div id="list"></div></section>
+    <div class="col" style="gap: 20px">
+      <form class="card" id="add" style="padding: 20px; gap: 12px">
+        <h2 style="font-size: 15px; font-weight: 650">Track an ingredient</h2>
+        <label class="f">Name<input name="name" required maxlength="80" placeholder="e.g. Paneer"></label>
+        <label class="f">Unit<select name="unit">{% for v, l in units %}<option value="{{ v }}">{{ l }}</option>{% endfor %}</select></label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px">
+          <label class="f">In stock now<input name="stock" type="number" step="0.01" min="0" value="0"></label>
+          <label class="f">Warn at<input name="low_at" type="number" step="0.01" min="0" value="0"></label>
+        </div>
+        <button class="btn" type="submit">Add ingredient</button>
+      </form>
+      <section class="card" style="padding: 20px; gap: 8px">
+        <h2 style="font-size: 15px; font-weight: 650">Recipes</h2>
+        <p class="muted sm">Say how much of each ingredient one portion uses on the dish itself, in <a href="/admin/core/dish/">Menu and tables</a>, under "Recipe". Dishes without a recipe never sell out by themselves.</p>
+      </section>
+    </div>
+  </div>
+</main>
+<style>@media (max-width: 900px) { #grid { grid-template-columns: 1fr !important; } }</style>
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+let D = null;
+const num = (v) => Number(v).toLocaleString(undefined, { maximumFractionDigits: 2 });
+const save = (i, body, done) => act(() => api('/owner/inventory/' + i.id + '/', body).then(() => toast(done)), refresh);
+
+function row(i) {
+  const add = h('input', { type: 'number', step: '0.01', placeholder: '+ / −', 'aria-label': 'Add to ' + i.name, style: 'width:96px;padding:7px 9px' });
+  return h('tr', {},
+    h('td', {}, h('div', { class: 'b' }, i.name), i.dishes.length ? h('div', { class: 'muted sm' }, i.dishes.map((x) => x.name + ' ' + num(x.amount) + i.unit + (x.available ? '' : ' (sold out)')).join(' · ')) : h('div', { class: 'muted sm' }, 'Not in any recipe yet')),
+    h('td', { class: 'num' }, h('span', { class: 'b', style: i.low ? 'color:var(--saf)' : '' }, num(i.stock) + ' ' + i.unit), i.low ? h('div', {}, h('span', { class: 'st bill' }, Number(i.stock) <= 0 ? 'Out' : 'Low')) : null),
+    h('td', { class: 'num muted' }, num(i.low_at) + ' ' + i.unit),
+    h('td', {}, h('div', { class: 'row', style: 'gap:6px;flex-wrap:nowrap' }, add,
+      h('button', { class: 'btn sm', onclick: () => { if (add.value) save(i, { add: add.value }, (+add.value >= 0 ? 'Added ' : 'Removed ') + num(Math.abs(+add.value)) + ' ' + i.unit); } }, 'Update'),
+      h('button', { class: 'btn ghost sm', title: 'Enter what you counted', onclick: () => { const c = prompt('How much ' + i.name + ' did you count (' + i.unit + ')?', i.stock); if (c !== null && c !== '') save(i, { count: c }, 'Stock set'); } }, 'Count'),
+      h('button', { class: 'btn ghost sm', onclick: () => { const c = prompt('Warn when ' + i.name + ' is at or below (' + i.unit + '):', i.low_at); if (c !== null && c !== '') save(i, { low_at: c }, 'Warning level set'); } }, 'Warn at'))));
+}
+function render() {
+  $('#list').replaceChildren(D.ingredients.length
+    ? h('table', { class: 'dtable' }, h('thead', {}, h('tr', {}, ['Ingredient', 'In stock', 'Warn at', 'Delivery, waste or count'].map((t) => h('th', {}, t)))), h('tbody', {}, D.ingredients.map(row)))
+    : h('div', { class: 'empty', style: 'margin:20px' }, 'No ingredients yet. Add the ones that run out, like paneer, chicken or naan dough.'));
+}
+async function refresh() { D = await api('/owner/inventory/data/'); render(); }
+$('#add').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target).entries());
+  act(() => api('/owner/inventory/data/', body).then((d) => { D = d; render(); e.target.reset(); toast(body.name + ' added'); }));
+});
+live('/ws/staff/', refresh, 20000);
+</script>
+{% endblock %}

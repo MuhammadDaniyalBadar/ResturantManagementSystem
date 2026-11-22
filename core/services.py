@@ -14,10 +14,10 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Count, Q, Sum
+from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 
-from .models import (PLANS, TRIAL_DAYS, Bill, Deal, Dish, Guest, Member, Order, OrderItem, Payment, PlanPayment, QuizAnswer,
+from .models import (PLANS, TRIAL_DAYS, Bill, Deal, Dish, Guest, Ingredient, RecipeItem, Member, Order, OrderItem, Payment, PlanPayment, QuizAnswer,
                      QuizQuestion, Reservation, Restaurant, Review, ServiceRequest, StaffProfile, Table)
 
 MAX_LINES, MAX_QTY, MAX_SPLIT, MAX_TIP = 30, 20, 10, 30
@@ -276,6 +276,8 @@ def advance_order(order, role):
     order.status = to
     if to == Order.COOKING:
         order.cooking_at = now
+        _move_stock(order.items.all(), -1)
+        order.stock_taken = True
     elif to == Order.READY:
         order.ready_at = now
         order.items.filter(ready_at__isnull=True).update(ready_at=now)
@@ -303,6 +305,9 @@ def cancel_order(order, by, guest=None):
         raise OrderError("The kitchen already has this order. Ask your waiter to change it.")
     _editable(order)
     table_id = order.table_id
+    if order.stock_taken:
+        _move_stock(order.items.all(), +1)
+        order.stock_taken = False
     order.status, order.cancelled_at, order.cancelled_by, order.bill = Order.CANCELLED, timezone.now(), "guest" if guest else by, None
     order.save()
     notify(order.restaurant_id, table_id)
@@ -319,6 +324,8 @@ def remove_item(item, by):
         left = sum(i.quantity for i in order.items.filter(dish_id=item.dish_id, deal__isnull=True).exclude(pk=item.pk))
         if (order.items.filter(deal__dish_id=item.dish_id).aggregate(n=Sum("quantity"))["n"] or 0) > left:
             raise OrderError("Remove the deal item that goes with this dish first.")
+    if order.stock_taken:
+        _move_stock([item], +1)
     item.delete()
     if not order.items.exists():
         return cancel_order(order, by)
@@ -327,8 +334,8 @@ def remove_item(item, by):
 
 
 def set_available(dish, available):
-    dish.available = bool(available)
-    dish.save(update_fields=["available"])
+    dish.available, dish.auto_out = bool(available), False  # a person decided, so inventory stops managing it
+    dish.save(update_fields=["available", "auto_out"])
     notify_restaurant(dish.restaurant)
     return dish
 
@@ -663,3 +670,77 @@ def update_reservation(res, action, table=None):
                   settings.DEFAULT_FROM_EMAIL, [res.email], fail_silently=True)
     notify(res.restaurant_id, None)
     return res
+
+
+# ---------- inventory ----------
+
+def _move_stock(items, sign):
+    """sign -1 takes ingredients for these order items, +1 puts them back. Then dishes that ran out are sold out."""
+    used = {}
+    for line in RecipeItem.objects.filter(dish__in=[i.dish_id for i in items]):
+        for i in items:
+            if i.dish_id == line.dish_id:
+                used[line.ingredient_id] = used.get(line.ingredient_id, Decimal(0)) + line.amount * i.quantity
+    for ing_id, amount in used.items():
+        Ingredient.objects.filter(pk=ing_id).update(stock=F("stock") + sign * amount)
+    if used:
+        refresh_availability(Ingredient.objects.filter(pk__in=used).first().restaurant, used.keys())
+
+
+def refresh_availability(restaurant, ingredient_ids):
+    """A dish sells out when any ingredient cannot cover one more portion, and comes back when all can,
+    unless a person marked it sold out by hand."""
+    stock = dict(Ingredient.objects.filter(restaurant=restaurant).values_list("id", "stock"))
+    changed = False
+    for dish in Dish.objects.filter(restaurant=restaurant, recipe__ingredient_id__in=list(ingredient_ids)).distinct().prefetch_related("recipe"):
+        enough = all(stock.get(line.ingredient_id, 0) >= line.amount for line in dish.recipe.all())
+        if dish.available and not enough:
+            dish.available, dish.auto_out, changed = False, True, True
+        elif not dish.available and dish.auto_out and enough:
+            dish.available, dish.auto_out, changed = True, False, True
+        else:
+            continue
+        dish.save(update_fields=["available", "auto_out"])
+    if changed:
+        notify_restaurant(restaurant)
+
+
+def _amount(value, what="amount"):
+    try:
+        value = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (ArithmeticError, ValueError, TypeError):
+        raise OrderError(f"Enter a number for the {what}.")
+    if not value.is_finite() or abs(value) > Decimal("999999999"):
+        raise OrderError(f"Enter a sensible {what}.")
+    return value
+
+
+@transaction.atomic
+def adjust_stock(ingredient, add=None, count=None, low_at=None):
+    """add = delivery (+) or waste (-); count = the number found in a stocktake; low_at = the warning level."""
+    ing = Ingredient.objects.select_for_update().get(pk=ingredient.pk)
+    if add is not None and add != "":
+        ing.stock += _amount(add)
+    if count is not None and count != "":
+        ing.stock = _amount(count, "count")
+    if low_at is not None and low_at != "":
+        ing.low_at = max(Decimal(0), _amount(low_at, "warning level"))
+    ing.save(update_fields=["stock", "low_at"])
+    refresh_availability(ing.restaurant, [ing.pk])
+    notify(ing.restaurant_id, None)
+    return ing
+
+
+def add_ingredient(restaurant, name, unit, stock, low_at):
+    name = " ".join(str(name or "").split())[:80]
+    if not name:
+        raise OrderError("Name the ingredient.")
+    if unit not in dict(Ingredient.UNITS):
+        raise OrderError("Pick a unit.")
+    if Ingredient.objects.filter(restaurant=restaurant, name__iexact=name).exists():
+        raise OrderError("You already track that ingredient.")
+    return Ingredient.objects.create(restaurant=restaurant, name=name, unit=unit, stock=_amount(stock or 0, "stock"), low_at=max(Decimal(0), _amount(low_at or 0, "warning level")))
+
+
+def low_stock(restaurant):
+    return list(Ingredient.objects.filter(restaurant=restaurant, stock__lte=F("low_at")).values("name", "stock", "unit"))

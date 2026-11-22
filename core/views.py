@@ -21,7 +21,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from . import services
-from .models import (PLANS, TRIAL_DAYS, Bill, Category, Deal, Dish, Guest, Member, Order, OrderItem, Payment, PlanPayment, QuizQuestion,
+from .models import (PLANS, TRIAL_DAYS, Bill, Category, Deal, Dish, Guest, Ingredient, Member, Order, OrderItem, Payment, PlanPayment, QuizQuestion,
                      Reservation, Restaurant, Review, ServiceRequest, StaffProfile, Table)
 
 OWNER, WAITER, KITCHEN = StaffProfile.OWNER, StaffProfile.WAITER, StaffProfile.KITCHEN
@@ -456,7 +456,7 @@ def kitchen_data(request):
             ticket = {"order_id": o.id, "table": o.table.number, "elapsed": seconds_since(o.cooking_at, now), "target": target, "items": lines}
             stations.setdefault(station, []).append(ticket)
     waiting = Order.objects.filter(restaurant=request.profile.restaurant, status=Order.PLACED).count()
-    return JsonResponse({"waiting": waiting, "stations": [{"name": n, "tickets": t} for n, t in sorted(stations.items())]})
+    return JsonResponse({"waiting": waiting, "low": services.low_stock(request.profile.restaurant), "stations": [{"name": n, "tickets": t} for n, t in sorted(stations.items())]})
 
 
 @require_POST
@@ -514,6 +514,7 @@ def owner_data(request):
     return JsonResponse({
         "currency": r.currency,
         "setup": setup if not all(s["done"] for s in setup) else [],
+        "low": services.low_stock(r),
         "tables_total": r.tables.count(), "tables_in_use": Bill.objects.filter(restaurant=r).exclude(status=Bill.PAID).count(),
         "orders_today": live.filter(created_at__gte=today).count(),
         "sales_today": money(day_sales.get(today.date(), Decimal(0))),
@@ -557,6 +558,38 @@ def team_member(request, pk):
     user = get_object_or_404(User, pk=pk, profile__restaurant=request.profile.restaurant)
     d = read_json(request)
     services.update_staff(request.user, user, active=d.get("active"), role=d.get("role"), password=d.get("password"))
+    return JsonResponse({"ok": True})
+
+
+# ---------- inventory (owner) ----------
+
+@staff_only(OWNER)
+def inventory_page(request):
+    return render(request, "inventory.html", {"restaurant": request.profile.restaurant, "units": Ingredient.UNITS})
+
+
+@staff_only(OWNER, api=True)
+@json_api
+def inventory_data(request):
+    r = request.profile.restaurant
+    if request.method == "POST":
+        d = read_json(request)
+        services.add_ingredient(r, d.get("name"), d.get("unit"), d.get("stock"), d.get("low_at"))
+    rows = []
+    for i in Ingredient.objects.filter(restaurant=r).prefetch_related("uses__dish"):
+        rows.append({"id": i.id, "name": i.name, "unit": i.unit, "stock": money(i.stock), "low_at": money(i.low_at), "low": i.stock <= i.low_at,
+                     "dishes": [{"name": u.dish.name, "amount": money(u.amount), "portions": int(i.stock // u.amount) if u.amount > 0 and i.stock > 0 else 0, "available": u.dish.available}
+                                for u in i.uses.all()]})
+    return JsonResponse({"ingredients": rows, "auto_out": list(Dish.objects.filter(restaurant=r, auto_out=True).values_list("name", flat=True))})
+
+
+@require_POST
+@staff_only(OWNER, api=True)
+@json_api
+def inventory_adjust(request, pk):
+    ing = get_object_or_404(Ingredient, pk=pk, restaurant=request.profile.restaurant)
+    d = read_json(request)
+    services.adjust_stock(ing, add=d.get("add"), count=d.get("count"), low_at=d.get("low_at"))
     return JsonResponse({"ok": True})
 
 
