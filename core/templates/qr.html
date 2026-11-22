@@ -1,16 +1,10 @@
 {% extends "base.html" %}
 {% block title %}QR codes · {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}ops{% endblock %}
 {% block body %}
-<header class="hero">
-  <div class="topbar" style="position: relative; z-index: 1">
-    <div class="logo">{{ restaurant.initials }}</div>
-    <div><h1 class="d">Table QR codes</h1><div class="muted sm" style="margin-top: 3px">{{ restaurant.name }}</div></div>
-    <nav><a class="chip" href="{% url 'staff' %}">Back to the service desk</a></nav>
-    <span class="grow"></span>
-    <button class="btn sm" onclick="print()">Print</button>
-  </div>
-</header>
-<main class="page" style="padding-top: 24px">
+{% include "_rail.html" with active="qr" %}
+<div class="pagehead"><div><h1>Table QR codes</h1><p>One code per table. Print and place on the tables.</p></div><button class="btn sm noprint" onclick="print()">Print</button></div>
+<main class="page" style="padding-top: 20px">
   <p class="muted noprint" style="margin-bottom: 18px">Print this page and put one code on each table. Each link carries a long random code, so guests cannot guess another table's link.</p>
   <div class="qrgrid">
     {% for t in tables %}

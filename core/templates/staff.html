@@ -1,18 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Staff · {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}ops{% endblock %}
 {% block body %}
-<header class="hero">
-  <div class="topbar" style="position: relative; z-index: 1">
-    <div class="logo">{{ restaurant.initials }}</div>
-    <div><h1 class="d">{{ restaurant.name }}</h1><div class="muted sm" style="margin-top: 3px">Service desk</div></div>
-    <nav id="tabs"></nav>
-    <span class="grow"></span>
-    {% if role == "owner" %}<nav><a class="chip sm" href="{% url 'owner' %}">Overview</a><a class="chip sm" href="{% url 'kitchen' %}">Kitchen</a><a class="chip sm" href="{% url 'qr' %}">QR codes</a><a class="chip sm" href="/admin/">Menu and tables</a></nav>{% endif %}
-    <span class="row" style="gap: 8px; font-weight: 700; font-size: 13px"><span class="livedot"></span>Live</span>
-    <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
-  </div>
-</header>
-<main class="page" style="padding-top: 24px" id="main"></main>
+{% include "_rail.html" with active="staff" %}
+<div class="pagehead"><div><h1>Service desk</h1><p>Orders, requests, payments and the live floor.</p></div></div>
+<main class="page" style="padding-top: 20px" id="main"></main>
 {% endblock %}
 {% block script %}
 <script>
@@ -47,7 +39,7 @@ function requestCard(r, n) {
 function paymentCard(p, n) {
   return h('div', { class: 'ticket', style: anim(n) + ';border-left-color:var(--saf)' },
     h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + p.table), h('span', { class: 'st bill' }, p.method_label)),
-    h('div', { class: 'spread' }, h('span', {}, p.guest), h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:#ffcb62' }, money(S.data.currency, p.amount))),
+    h('div', { class: 'spread' }, h('span', {}, p.guest), h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:var(--acc-h)' }, money(S.data.currency, p.amount))),
     p.tip !== '0.00' ? h('span', { class: 'muted sm' }, 'includes ' + money(S.data.currency, p.tip) + ' tip') : null,
     p.email ? h('span', { class: 'muted sm' }, 'Invoice to ' + p.email) : null,
     h('button', { class: 'btn', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/payments/' + p.id + '/paid/', {}), refresh); } }, 'Payment received'));
@@ -96,7 +88,7 @@ async function refresh() { S.data = await api('/staff/data/'); render(); }
 live('/ws/staff/', refresh);
 </script>
 <style>
-.floormap { position: relative; min-height: 460px; height: 100%; border-radius: 30px; background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-s); background-image: radial-gradient(#33261d 1.2px, transparent 1.2px); background-size: 22px 22px; }
+.floormap { position: relative; min-height: 460px; height: 100%; border-radius: 14px; background: var(--s1); border: 1px solid var(--line); box-shadow: var(--shadow-s); background-image: radial-gradient(#232936 1.2px, transparent 1.2px); background-size: 22px 22px; }
 @media (max-width: 800px) { .floormap { min-height: 380px; } }
 </style>
 {% endblock %}

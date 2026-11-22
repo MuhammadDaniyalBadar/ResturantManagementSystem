@@ -80,7 +80,7 @@ function backbar(title, to, extra) {
 }
 const priceLine = (d) => h('span', { class: 'col', style: 'gap:0;padding-right:48px' },
   h('span', { class: 'muted sm', style: 'min-height:16px' }, d.sizes.length ? 'from' : ''),
-  h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:#ffcb62;white-space:nowrap' }, money(CUR, lowest(d))));
+  h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h);white-space:nowrap' }, money(CUR, lowest(d))));
 function gridCard(d, i) {
   return h('div', { class: A('gcard'), style: `--i:${i}` },
     h('div', { class: 'pslot' }, plate(d.art, d.name, 116)),
@@ -95,8 +95,8 @@ function pickCard(d) {
     h('div', { class: 'col', style: 'gap:6px;max-width:160px' },
       h('span', { class: 'tag', style: 'align-self:flex-start;background:rgba(255,255,255,.22);color:#fff' }, "Chef's pick"),
       h('h2', { class: 'd', style: 'font-size:27px;line-height:1.02;font-weight:700' }, d.name),
-      h('span', { style: 'color:#ffe9cf' }, (d.sizes.length ? 'from ' : '') + money(CUR, lowest(d))),
-      h('button', { class: 'btn sm', style: 'align-self:flex-start;margin-top:6px;background:#120d0b;color:#fff4e8;box-shadow:none', onclick: () => openDish(d) }, 'Order now')));
+      h('span', { style: 'color:var(--muted)' }, (d.sizes.length ? 'from ' : '') + money(CUR, lowest(d))),
+      h('button', { class: 'btn sm', style: 'align-self:flex-start;margin-top:6px;background:var(--acc);color:#fff;box-shadow:none', onclick: () => openDish(d) }, 'Order now')));
 }
 function floatbar() {
   if (!count()) return null;
@@ -114,7 +114,7 @@ function sheet() {
   const pairs = DISHES.filter((x) => x.id !== d.id && x.cat !== d.cat && !x.sizes.length && !d.deals.some((e) => e.partner_id === x.id)).slice(0, 2);
   return shell([
     h('div', { style: 'position:relative;display:flex;justify-content:center;padding:8px 0 2px' },
-      h('div', { style: 'position:absolute;top:14px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(255,176,32,.32),transparent 68%)' }),
+      h('div', { style: 'position:absolute;top:14px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(76,141,255,.25),transparent 68%)' }),
       h('div', { class: 'floaty', style: 'position:relative' }, plate(d.art, d.name, 200))),
     h('div', { class: 'spread', style: 'align-items:flex-start' },
       h('h2', { class: 'd', style: 'font-size:31px;line-height:1.02;font-weight:700' }, d.name),
@@ -122,10 +122,10 @@ function sheet() {
     h('p', { class: 'muted' }, d.description),
     h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, SPICE[d.spice] ? h('span', { class: 'tag' + (d.spice === 'Hot' ? ' hot' : '') }, d.spice + ' spice') : null, d.allergens.map((a) => h('span', { class: 'tag al' }, 'Contains ' + a))),
     d.sizes.length ? h('div', { class: 'seg' }, d.sizes.map((s) => h('button', { class: String(S.sheet.size) === String(s.id) ? 'on' : '', onclick: () => { S.sheet.size = s.id; render(); } }, s.label + ' · ' + money(CUR, s.price)))) : null,
-    d.deals.map((e) => h('div', { class: 'col', style: 'padding:14px;border-radius:22px;gap:6px;background:linear-gradient(135deg,#ffc247,#ff8a1f);color:#2a1400' },
+    d.deals.map((e) => h('div', { class: 'col', style: 'padding:14px;border-radius:14px;gap:6px;background:var(--acc-s);border:1px solid rgba(76,141,255,.4);color:var(--fg)' },
       h('span', { class: 'bb' }, 'Deal'),
       h('div', { class: 'row', style: 'gap:12px' }, plate(e.art, e.partner, 48, 'flat'), h('span', { class: 'grow bb' }, '+ ' + e.partner, h('span', { style: 'display:block;font-weight:500' }, h('b', {}, money(CUR, e.price)), ' ', h('s', {}, money(CUR, e.normal)))),
-        h('button', { class: 'btn sm', style: 'background:#120d0b;color:#fff4e8;box-shadow:none', onclick: () => { addDeal(d, e); S.sheet = null; toast('Deal added'); render(); } }, 'Add deal')))),
+        h('button', { class: 'btn sm', style: 'background:var(--acc);color:#fff;box-shadow:none', onclick: () => { addDeal(d, e); S.sheet = null; toast('Deal added'); render(); } }, 'Add deal')))),
     pairs.length ? h('div', { class: 'card flat', style: 'gap:12px;padding:14px' }, h('span', { class: 'bb' }, 'Goes well with'),
       pairs.map((x) => h('div', { class: 'row', style: 'gap:12px' }, plate(x.art, x.name, 46, 'flat'), h('span', { class: 'grow' }, x.name + ' ', h('span', { class: 'muted' }, '+' + money(CUR, x.price))), h('button', { class: 'btn ghost sm', onclick: () => { addLine(x, '', 1); toast(x.name + ' added'); render(); } }, 'Add')))) : null,
     h('div', { class: 'row', style: 'gap:12px' },
@@ -171,14 +171,14 @@ function cartView() {
     return h('div', { class: A('card'), style: `--i:${i};flex-direction:row;gap:14px;align-items:center;padding:12px` },
       plate(d.art, d.name, 64),
       h('div', { class: 'col grow', style: 'gap:8px' },
-        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name, l.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:#ffcb62' }, money(CUR, unit(l) * l.qty))),
+        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name, l.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h)' }, money(CUR, unit(l) * l.qty))),
         h('div', { class: 'spread' },
           h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { changeQty(l, -1); render(); } }, icon('minus', 14, 2.6)), h('span', {}, l.qty), h('button', { 'aria-label': 'More', onclick: () => { changeQty(l, 1); render(); } }, icon('plus', 14, 2.6))),
           h('input', { id: 'note-' + i, style: 'width:120px;padding:8px 10px;font-size:12px', 'aria-label': 'Note for the kitchen', placeholder: 'Add a note', value: l.note, maxlength: 140, oninput: (e) => { l.note = e.target.value; } }))));
   });
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your order', 'menu', h('span', { class: 'pill' }, 'Table ' + TNUM)),
     h('div', { class: 'scroll col', style: 'padding:10px 18px 12px;gap:12px' }, lines.length ? lines : h('div', { class: 'empty' }, 'Your cart is empty.'), h('button', { class: 'btn ghost wide', onclick: () => go('menu') }, '+ Add more dishes')),
-    h('div', { class: 'col', style: 'padding:18px 20px 30px;gap:12px;background:linear-gradient(180deg,#261c16,#1c1511);border-radius:32px 32px 0 0;border-top:1px solid #3b2d24;box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
+    h('div', { class: 'col', style: 'padding:18px 20px 30px;gap:12px;background:var(--s1);border-radius:18px 18px 0 0;border-top:1px solid var(--line);box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
       h('div', { class: 'spread' }, h('span', { class: 'muted' }, 'Subtotal'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700' }, money(CUR, sub()))),
       h('p', { class: 'muted sm' }, 'The restaurant confirms your final price. Service charge and tax are added to your bill.'),
       h('button', { class: 'btn wide', disabled: !S.cart.length, onclick: place }, 'Place order')));
@@ -193,7 +193,7 @@ async function place() {
 }
 function placedView() {
   return h('div', { class: 'screen scr', style: 'align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center' },
-    h('div', { class: 'pop', style: 'width:104px;height:104px;border-radius:50%;background:linear-gradient(160deg,#ffc247,#ff8a1f);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 12px rgba(255,176,32,.12),0 20px 44px rgba(255,138,31,.45);color:#2a1400' },
+    h('div', { class: 'pop', style: 'width:104px;height:104px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 12px rgba(76,141,255,.14),0 20px 44px rgba(255,138,31,.45);color:#fff' },
       svg('<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
     h('h1', { class: 'd rise', style: '--i:2;font-size:40px;font-weight:700' }, 'Order ', h('span', { class: 'gold' }, 'placed')),
     h('p', { class: 'muted rise', style: '--i:3' }, 'Table ' + TNUM + '. Your waiter has it.'),
@@ -244,9 +244,9 @@ function wifiView() {
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('WiFi', 'status'),
     h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' },
       h('div', { class: A('card'), style: 'align-items:center;padding:28px 18px;gap:14px;text-align:center;box-shadow:var(--shadow-m)' },
-        h('div', { class: 'floaty', style: 'color:#ffcb62' }, icon('wifi', 64, 1.6)),
+        h('div', { class: 'floaty', style: 'color:var(--acc-h)' }, icon('wifi', 64, 1.6)),
         h('span', { class: 'muted sm b' }, 'Network'), h('span', { class: 'd', style: 'font-size:28px;font-weight:700' }, w.name),
-        h('span', { class: 'muted sm b' }, 'Password'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700;color:#ffcb62' }, w.password || 'No password'),
+        h('span', { class: 'muted sm b' }, 'Password'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700;color:var(--acc-h)' }, w.password || 'No password'),
         w.password ? h('button', { class: 'btn', onclick: () => copyText(w.password) }, icon('copy', 18), 'Copy the password') : null),
       h('p', { class: 'muted' }, 'Open your phone\'s WiFi settings, pick this network and paste the password.')));
 }
@@ -283,7 +283,7 @@ function quizView() {
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Spice Quiz', 'status'),
     h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' }, body,
       h('div', { class: 'card' }, h('span', { class: 'bb' }, 'Table vs table · live'),
-        board.tables.length ? board.tables.map((t, i) => h('div', { class: 'spread' }, h('span', { class: 'row', style: 'gap:10px' }, h('span', { class: 'pill', style: 'min-width:28px;justify-content:center' }, i + 1), h('span', { class: t.table === TNUM ? 'bb' : '' }, 'Table ' + t.table + (t.table === TNUM ? ' (you)' : ''))), h('span', { class: 'num bb', style: 'color:#ffcb62' }, t.points + ' pts'))) : h('span', { class: 'muted' }, 'No scores yet. Be the first.')),
+        board.tables.length ? board.tables.map((t, i) => h('div', { class: 'spread' }, h('span', { class: 'row', style: 'gap:10px' }, h('span', { class: 'pill', style: 'min-width:28px;justify-content:center' }, i + 1), h('span', { class: t.table === TNUM ? 'bb' : '' }, 'Table ' + t.table + (t.table === TNUM ? ' (you)' : ''))), h('span', { class: 'num bb', style: 'color:var(--acc-h)' }, t.points + ' pts'))) : h('span', { class: 'muted' }, 'No scores yet. Be the first.')),
       board.players.length ? h('div', { class: 'card' }, h('span', { class: 'bb' }, 'Players'), board.players.map((p) => h('div', { class: 'spread' }, h('span', { class: p.id === (S.guest && S.guest.id) ? 'bb' : '' }, p.name, h('span', { class: 'muted sm' }, ' · Table ' + p.table)), h('span', { class: 'num b' }, p.points + ' pts')))) : null));
 }
 async function answerQuiz(choice) {
@@ -325,14 +325,14 @@ function billView() {
   const form = mine ? h('div', { class: A('card'), style: '--i:2;align-items:center;text-align:center;padding:22px;gap:8px' }, h('div', { class: 'livedot', style: 'width:14px;height:14px' }), h('h3', { class: 'd', style: 'font-size:24px' }, 'Your waiter is coming'), h('p', { class: 'muted' }, 'Pay ' + money(CUR, mine.amount) + ' by ' + mine.method_label.toLowerCase() + ' at your table. This screen updates the moment they confirm.'))
     : [h('div', { class: A('card'), style: '--i:2;gap:12px' }, h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Split the bill'), h('span', { class: 'muted sm' }, locked ? 'Already chosen by the table' : S.guests.length > 1 ? S.guests.join(' and ') : 'Equal shares')),
         h('div', { class: 'spread' }, h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer people', disabled: locked, onclick: () => { S.pay.split = Math.max(1, split - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, split), h('button', { 'aria-label': 'More people', disabled: locked, onclick: () => { S.pay.split = Math.min(10, split + 1); render(); } }, icon('plus', 16, 2.4))),
-          h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:#ffcb62' }, money(CUR, share), h('span', { class: 'muted sm', style: 'font-family:var(--font-b);font-weight:600' }, ' each')))),
+          h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:var(--acc-h)' }, money(CUR, share), h('span', { class: 'muted sm', style: 'font-family:var(--font-b);font-weight:600' }, ' each')))),
       h('div', { class: A('card'), style: '--i:3;gap:12px' }, h('span', { class: 'bb' }, 'Tip'), h('div', { class: 'seg' }, [0, 5, 10, 15, 20].map((p) => h('button', { class: S.pay.tip === p ? 'on' : '', onclick: () => { S.pay.tip = p; render(); } }, p ? p + '%' : 'No tip')))),
       h('div', { class: A('card'), style: '--i:4;gap:10px' }, h('span', { class: 'bb' }, 'Pay at the table by'),
         METHODS.map(([k, label, ic]) => h('button', { class: 'row' + (S.pay.method === k ? ' on' : ''), style: `gap:12px;padding:12px 14px;border-radius:16px;border:1.5px solid ${S.pay.method === k ? 'var(--saf)' : 'var(--line)'};background:${S.pay.method === k ? 'var(--saf-s)' : 'var(--s1)'};text-align:left`, onclick: () => { S.pay.method = k; render(); } }, icon(ic, 22, 1.8), h('span', { class: 'grow b' }, label), S.pay.method === k ? icon('check', 18, 2.6) : null))),
       h('div', { class: A('card'), style: '--i:5;gap:8px' }, h('label', { class: 'f' }, 'Email the invoice to', h('input', { id: 'pay-email', type: 'email', placeholder: 'you@example.com (optional)', value: S.pay.email, autocomplete: 'email', oninput: (e) => { S.pay.email = e.target.value; } })))];
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your bill', 'status', h('span', { class: 'pill' }, '#' + b.id)),
     h('div', { class: 'scroll col', style: 'padding:6px 18px 14px;gap:12px' }, itemised, others, form),
-    mine ? null : h('div', { class: 'col', style: 'padding:16px 18px 28px;background:linear-gradient(180deg,#261c16,#1c1511);border-top:1px solid #3b2d24;border-radius:32px 32px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
+    mine ? null : h('div', { class: 'col', style: 'padding:16px 18px 28px;background:var(--s1);border-top:1px solid var(--line);border-radius:18px 18px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
       h('button', { class: 'btn wide', onclick: payNow }, 'Pay ' + money(CUR, share + tipAmt))));
 }
 async function payNow() {
@@ -345,7 +345,7 @@ function thanksView() {
   const done = S.reviewed || p.reviewed;
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') },
     h('div', { class: 'hero', style: 'padding:64px 20px 30px;flex:none;text-align:center' }, h('div', { class: 'col', style: 'position:relative;z-index:1;align-items:center;gap:10px' },
-      h('div', { class: 'pop', style: 'width:76px;height:76px;border-radius:50%;background:linear-gradient(160deg,#ffc247,#ff8a1f);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px rgba(255,176,32,.12),var(--glow);color:#2a1400' }, svg('<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
+      h('div', { class: 'pop', style: 'width:76px;height:76px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px rgba(76,141,255,.14),var(--glow);color:#fff' }, svg('<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
       h('h1', { class: 'd rise', style: '--i:2;font-size:34px;font-weight:700' }, 'Payment ', h('span', { class: 'gold' }, 'recorded')),
       h('p', { class: 'muted rise', style: '--i:3' }, money(CUR, p.amount) + ' by ' + p.method + '. Thank you for dining with us.'))),
     h('div', { class: 'scroll col', style: 'padding:8px 18px 22px;gap:12px' },
@@ -388,6 +388,6 @@ live('/ws/t/' + CODE + '/', refreshState);
 .seg-btn { min-height: 50px; padding: 0 16px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--s1); font-weight: 700; text-align: left; transition: background-color .2s, border-color .2s; }
 .seg-btn:hover:not([disabled]) { border-color: var(--saf); }
 .seg-btn.on { border-color: var(--mint); background: var(--mint-s); color: var(--mint); }
-.seg-btn.wrong { border-color: var(--chi); background: var(--chi-s); color: #ff8a7e; }
+.seg-btn.wrong { border-color: var(--chi); background: var(--chi-s); color: #ff8f87; }
 </style>
 {% endblock %}

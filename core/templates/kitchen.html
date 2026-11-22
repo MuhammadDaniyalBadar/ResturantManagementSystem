@@ -1,18 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Kitchen · {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}ops{% endblock %}
 {% block body %}
-<header class="hero">
-  <div class="topbar" style="position: relative; z-index: 1">
-    <div class="logo">{{ restaurant.initials }}</div>
-    <div><h1 class="d">Kitchen</h1><div class="muted sm" style="margin-top: 3px">{{ restaurant.name }}</div></div>
-    <nav>{% if request.user.profile.role == "owner" %}<a class="chip" href="{% url 'staff' %}">Service desk</a>{% endif %}</nav>
-    <span class="grow"></span>
-    <span class="pill" id="open">0 open</span>
-    <span class="row" style="gap: 8px; font-weight: 700; font-size: 13px"><span class="livedot"></span>Live</span>
-    <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
-  </div>
-</header>
-<main class="page" style="padding-top: 24px"><div class="board" id="board"></div></main>
+{% include "_rail.html" with active="kitchen" %}
+<div class="pagehead"><div><h1>Kitchen display</h1><p>Tickets by station, with a timer from the moment the waiter sends them.</p></div><span class="pill" id="open">0 cooking</span></div>
+<main class="page" style="padding-top: 20px"><div class="board" id="board"></div></main>
 {% endblock %}
 {% block script %}
 <script>

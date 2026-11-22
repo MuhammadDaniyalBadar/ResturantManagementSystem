@@ -1,0 +1,19 @@
+<aside class="rail">
+  <div class="rail-brand"><div class="logo">{{ restaurant.initials }}</div><div><b>{{ restaurant.name }}</b><span>{{ request.user.username }} · {{ request.user.profile.role|title }}</span></div></div>
+  <div class="label">Operations</div>
+  <nav class="rail-nav">
+    {% if request.user.profile.role != "kitchen" %}<a href="{% url 'staff' %}" class="{% if active == 'staff' %}on{% endif %}">Service desk</a>{% endif %}
+    {% if active == "staff" %}<div class="rail-sub" id="tabs"></div>{% endif %}
+    {% if request.user.profile.role != "waiter" %}<a href="{% url 'kitchen' %}" class="{% if active == 'kitchen' %}on{% endif %}">Kitchen display</a>{% endif %}
+    {% if request.user.profile.role == "owner" %}
+    <a href="{% url 'owner' %}" class="{% if active == 'owner' %}on{% endif %}">Overview</a>
+    <a href="{% url 'qr' %}" class="{% if active == 'qr' %}on{% endif %}">Table QR codes</a>
+    <a href="/admin/">Menu and tables</a>
+    {% endif %}
+  </nav>
+  <div class="rail-foot">
+    <span class="rail-live"><span class="livedot"></span>Live</span>
+    {% block railextra %}{% endblock %}
+    <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
+  </div>
+</aside>
