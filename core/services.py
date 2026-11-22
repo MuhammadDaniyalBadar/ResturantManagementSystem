@@ -1,16 +1,20 @@
 """All business rules live here: prices, bills, status changes, who may do what.
 Views and consumers only call these and display the result."""
 
+import re
 from datetime import timedelta
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from .models import (Bill, Deal, Dish, Guest, Member, Order, OrderItem, Payment, QuizAnswer, QuizQuestion, Review,
@@ -41,6 +45,13 @@ def notify(restaurant_id, table_id):
             async_to_sync(layer.group_send)(group, {"type": "changed"})
 
     transaction.on_commit(send)
+
+
+def notify_restaurant(restaurant):
+    """Every table's guests refresh too, e.g. when a dish sells out."""
+    layer = get_channel_layer()
+    groups = [f"rest-{restaurant.pk}"] + [f"table-{pk}" for pk in restaurant.tables.values_list("pk", flat=True)]
+    transaction.on_commit(lambda: [async_to_sync(layer.group_send)(g, {"type": "changed"}) for g in groups])
 
 
 def notify_quiz(restaurant_id):
@@ -273,6 +284,53 @@ def advance_order(order, role):
     return order
 
 
+def _editable(order):
+    """Orders can change only before they are served and while the bill is still open (no shares asked yet)."""
+    if order.status in (Order.SERVED, Order.CANCELLED):
+        raise OrderError("This order can no longer be changed.")
+    if order.bill_id is None or order.bill.status != Bill.OPEN:
+        raise OrderError("The bill is being paid, so this order can no longer be changed.")
+
+
+@transaction.atomic
+def cancel_order(order, by, guest=None):
+    """Staff (by = their username) can cancel until served; a guest only their own order, before the kitchen has it.
+    The order leaves the bill, so totals, the kitchen board and the floor map all drop it."""
+    order = Order.objects.select_for_update().select_related("bill").get(pk=order.pk)
+    if guest is not None and (order.guest_id != guest.id or order.status != Order.PLACED):
+        raise OrderError("The kitchen already has this order. Ask your waiter to change it.")
+    _editable(order)
+    table_id = order.table_id
+    order.status, order.cancelled_at, order.cancelled_by, order.bill = Order.CANCELLED, timezone.now(), "guest" if guest else by, None
+    order.save()
+    notify(order.restaurant_id, table_id)
+    return order
+
+
+@transaction.atomic
+def remove_item(item, by):
+    """Staff remove one line from an order. Removing the last line cancels the order."""
+    order = Order.objects.select_for_update().select_related("bill").get(pk=item.order_id)
+    _editable(order)
+    if not item.deal_id:
+        # a deal line needs as many of its main dish in the order
+        left = sum(i.quantity for i in order.items.filter(dish_id=item.dish_id, deal__isnull=True).exclude(pk=item.pk))
+        if (order.items.filter(deal__dish_id=item.dish_id).aggregate(n=Sum("quantity"))["n"] or 0) > left:
+            raise OrderError("Remove the deal item that goes with this dish first.")
+    item.delete()
+    if not order.items.exists():
+        return cancel_order(order, by)
+    notify(order.restaurant_id, order.table_id)
+    return order
+
+
+def set_available(dish, available):
+    dish.available = bool(available)
+    dish.save(update_fields=["available"])
+    notify_restaurant(dish.restaurant)
+    return dish
+
+
 @transaction.atomic
 def mark_station_ready(order, station, role):
     if role not in {StaffProfile.KITCHEN, StaffProfile.OWNER}:
@@ -376,3 +434,63 @@ def leaderboard(restaurant):
     for p in players:
         tables[p["table"]] = tables.get(p["table"], 0) + p["points"]
     return {"players": players[:8], "tables": [{"table": t, "points": v} for t, v in sorted(tables.items(), key=lambda kv: -kv[1])][:8]}
+
+
+# ---------- team ----------
+
+def set_access(user, role):
+    """Owners use the admin for the menu and tables (scoped to their restaurant); other roles get no admin access."""
+    user.is_staff = role == StaffProfile.OWNER
+    user.save(update_fields=["is_staff"])
+    if role == StaffProfile.OWNER:
+        user.user_permissions.add(*Permission.objects.filter(content_type__app_label="core"))
+    else:
+        user.user_permissions.clear()
+
+
+def _check_password(password, user):
+    try:
+        validate_password(str(password or ""), user)
+    except ValidationError as e:
+        raise OrderError(" ".join(e.messages))
+
+
+@transaction.atomic
+def add_staff(restaurant, username, name, role, password):
+    username = str(username or "").strip().lower()
+    if not re.fullmatch(r"[a-z0-9_.-]{3,30}", username):
+        raise OrderError("Usernames are 3 to 30 letters, numbers, dots, dashes or underscores.")
+    if role not in dict(StaffProfile.ROLES):
+        raise OrderError("Pick a role.")
+    User = get_user_model()
+    if User.objects.filter(username__iexact=username).exists():
+        raise OrderError("That username is taken.")
+    user = User(username=username, first_name=" ".join(str(name or "").split())[:150])
+    _check_password(password, user)
+    user.set_password(password)
+    user.save()
+    StaffProfile.objects.create(user=user, restaurant=restaurant, role=role)
+    set_access(user, role)
+    return user
+
+
+@transaction.atomic
+def update_staff(actor, user, active=None, role=None, password=None):
+    """Owner changes a teammate. Deactivating or changing a password ends that person's sessions."""
+    if not hasattr(user, "profile") or user.profile.restaurant_id != actor.profile.restaurant_id:
+        raise PermissionDenied
+    if user.pk == actor.pk and (active is False or (role and role != StaffProfile.OWNER)):
+        raise OrderError("You cannot switch off your own login or change your own role.")
+    if role is not None:
+        if role not in dict(StaffProfile.ROLES):
+            raise OrderError("Pick a role.")
+        user.profile.role = role
+        user.profile.save(update_fields=["role"])
+        set_access(user, role)
+    if active is not None:
+        user.is_active = bool(active)
+    if password:
+        _check_password(password, user)
+        user.set_password(password)
+    user.save()
+    return user

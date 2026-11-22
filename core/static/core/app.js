@@ -22,7 +22,7 @@ function svg(markup) {
   return t.content.firstChild;
 }
 const ICON = {
-  plus: '<path d="M12 5v14M5 12h14"/>', minus: '<path d="M5 12h14"/>', back: '<path d="M15 6l-6 6 6 6"/>', check: '<path d="M5 13l4 4L19 7"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', minus: '<path d="M5 12h14"/>', back: '<path d="M15 6l-6 6 6 6"/>', check: '<path d="M5 13l4 4L19 7"/>',
   bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/>', drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
   napkin: '<path d="M4 6h16v12H4zM4 10h16M9 6v12"/>', receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',
   cash: '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="12" cy="12" r="2.5"/>', bank: '<path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18"/>',
@@ -54,8 +54,14 @@ async function api(url, body) {
 
 // Refresh now, on every push from the server, and by polling as a fallback if the socket drops.
 function live(wsPath, refresh, pollMs = 8000) {
-  let busy = false;
-  const run = async () => { if (busy) return; busy = true; try { await refresh(); } catch (e) { console.warn(e); } busy = false; };
+  let busy = false, again = false;
+  // a push that lands mid-refresh is not dropped: one more refresh runs right after, so the screen shows the latest state
+  const run = async () => {
+    if (busy) { again = true; return; }
+    busy = true;
+    do { again = false; try { await refresh(); } catch (e) { console.warn(e); } } while (again);
+    busy = false;
+  };
   run();
   setInterval(run, pollMs);
   const open = () => {

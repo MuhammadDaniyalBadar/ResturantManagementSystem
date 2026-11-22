@@ -506,3 +506,180 @@ class Forbidden(TestCase):
         # logging out from there lands on the login page, which returns to the QR page
         out = c.post("/accounts/logout/", {"next": "/accounts/login/?next=/staff/qr/"})
         self.assertEqual(out.url, "/accounts/login/?next=/staff/qr/")
+
+
+class Beta2(TestCase):
+    """Order edits and cancels, sold-out dishes, team management, and the owner's admin scoped to one restaurant."""
+
+    def setUp(self):
+        self.r, self.table, self.curry, self.naan, self.users = make_restaurant("A")
+        self.a = services.join_guest(self.table, "Aman")
+        self.b = services.join_guest(self.table, "Riya")
+
+    def post(self, client, path, data=None):
+        return client.post(path, json.dumps(data or {}), content_type="application/json")
+
+    def staff(self, role="waiter"):
+        c = Client()
+        c.force_login(self.users[role])
+        return c
+
+    def guest_client(self, name="Aman"):
+        c = Client()
+        self.post(c, f"/t/{self.table.code}/join/", {"name": name})
+        return c
+
+    # --- cancel and edit ---
+
+    def test_staff_cancel_takes_the_order_off_the_bill_and_the_kitchen(self):
+        keep = services.place_order(self.table, [{"dish_id": self.naan.id, "quantity": 1}], self.a)
+        order = services.place_order(self.table, lines(self.curry, self.naan), self.a)
+        services.advance_order(order, "waiter")
+        self.assertEqual(self.post(self.staff(), f"/staff/orders/{order.id}/cancel/").status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual((order.status, order.bill_id, order.cancelled_by), (Order.CANCELLED, None, self.users["waiter"].username))
+        self.assertEqual(services.bill_summary(keep.bill)["sub"], 80)
+        board = self.staff("kitchen").get("/kitchen/data/").json()["stations"]
+        self.assertEqual([s for s in board if s["tickets"]], [])
+        self.assertEqual([o["id"] for o in self.staff().get("/staff/data/").json()["orders"]], [keep.id])
+        self.assertEqual(self.post(self.staff("kitchen"), f"/staff/orders/{keep.id}/cancel/").status_code, 403)
+
+    def test_guest_cancels_only_their_own_order_and_only_before_the_kitchen(self):
+        aman, riya = self.guest_client("Aman"), self.guest_client("Riya")
+        oid = self.post(aman, f"/t/{self.table.code}/order/", {"items": [{"dish_id": self.naan.id, "quantity": 2}]}).json()["order_id"]
+        self.assertEqual(self.post(riya, f"/t/{self.table.code}/orders/{oid}/cancel/").status_code, 400)
+        self.assertEqual(self.post(Client(), f"/t/{self.table.code}/orders/{oid}/cancel/").status_code, 400)
+        self.assertEqual(self.post(aman, f"/t/{self.table.code}/orders/{oid}/cancel/").status_code, 200)
+        self.assertEqual(Order.objects.get(pk=oid).cancelled_by, "guest")
+        self.assertEqual(aman.get(f"/t/{self.table.code}/state/").json()["orders"], [])
+        oid = self.post(aman, f"/t/{self.table.code}/order/", {"items": [{"dish_id": self.naan.id, "quantity": 1}]}).json()["order_id"]
+        services.advance_order(Order.objects.get(pk=oid), "waiter")
+        self.assertEqual(self.post(aman, f"/t/{self.table.code}/orders/{oid}/cancel/").status_code, 400)
+
+    def test_no_changes_once_served_or_once_the_bill_is_being_paid(self):
+        order = services.place_order(self.table, lines(self.curry, self.naan), self.a)
+        services.request_payment(order.bill, self.a, "cash", 0, "", 1)
+        with self.assertRaises(services.OrderError):
+            services.cancel_order(order, "waiter")
+        with self.assertRaises(services.OrderError):
+            services.remove_item(order.items.first(), "waiter")
+        served = services.place_order(Table.objects.create(restaurant=self.r, number=2), [{"dish_id": self.naan.id, "quantity": 1}])
+        for _ in range(3):
+            services.advance_order(served, "owner")
+        with self.assertRaises(services.OrderError):
+            services.cancel_order(served, "waiter")
+
+    def test_removing_items_updates_the_total_and_the_last_one_cancels(self):
+        from .models import Deal, OrderItem
+        lassi = Dish.objects.create(restaurant=self.r, category=self.curry.category, name="Lassi", price=180, station="Drinks")
+        deal = Deal.objects.create(restaurant=self.r, dish=self.curry, partner=lassi, price=99)
+        half = self.curry.sizes.get(label="Half")
+        order = services.place_order(self.table, [{"dish_id": self.curry.id, "size_id": half.id, "quantity": 1},
+                                                  {"dish_id": lassi.id, "deal_id": deal.id, "quantity": 1},
+                                                  {"dish_id": self.naan.id, "quantity": 2}], self.a)
+        curry_line, lassi_line, naan_line = order.items.order_by("id")
+        waiter = self.staff()
+        r = self.post(waiter, f"/staff/items/{curry_line.id}/remove/")
+        self.assertEqual((r.status_code, r.json()["error"]), (400, "Remove the deal item that goes with this dish first."))
+        for line in (lassi_line, curry_line):
+            self.assertEqual(self.post(waiter, f"/staff/items/{line.id}/remove/").status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual((order.total, order.status), (160, Order.PLACED))
+        self.assertEqual(self.post(waiter, f"/staff/items/{naan_line.id}/remove/").status_code, 200)
+        order.refresh_from_db()
+        self.assertEqual((order.status, order.bill_id), (Order.CANCELLED, None))
+        other, _, _, other_naan, _ = make_restaurant("B")
+        other_line = services.place_order(other.tables.first(), [{"dish_id": other_naan.id, "quantity": 1}]).items.first()
+        self.assertEqual(self.post(waiter, f"/staff/items/{other_line.id}/remove/").status_code, 404)
+        self.assertFalse(OrderItem.objects.filter(pk=curry_line.pk).exists())
+
+    def test_owner_numbers_skip_cancelled_orders(self):
+        services.cancel_order(services.place_order(self.table, lines(self.curry, self.naan), self.a), "waiter")
+        services.place_order(self.table, [{"dish_id": self.naan.id, "quantity": 1}], self.a)
+        data = self.staff("owner").get("/owner/data/").json()
+        self.assertEqual(data["orders_today"], 1)
+        self.assertEqual([(b["name"], b["qty"]) for b in data["best"]], [("Naan", 1)])
+
+    # --- sold out ---
+
+    def test_sold_out_shows_live_to_guests_and_blocks_orders(self):
+        guest = self.guest_client()
+        self.assertEqual(self.post(self.staff("kitchen"), f"/staff/dishes/{self.naan.id}/available/", {"available": False}).status_code, 200)
+        state = guest.get(f"/t/{self.table.code}/state/").json()
+        self.assertEqual(state["sold_out"], [self.naan.id])
+        menu = guest.get(f"/t/{self.table.code}/").context["menu"]
+        self.assertIn({"Naan": False}, [{d["name"]: d["available"]} for c in menu["categories"] for d in c["dishes"]])
+        r = self.post(guest, f"/t/{self.table.code}/order/", {"items": [{"dish_id": self.naan.id, "quantity": 1}]})
+        self.assertEqual(r.status_code, 400)
+        self.post(self.staff(), f"/staff/dishes/{self.naan.id}/available/", {"available": True})
+        self.assertEqual(guest.get(f"/t/{self.table.code}/state/").json()["sold_out"], [])
+        other_dish = make_restaurant("B")[2]
+        self.assertEqual(self.post(self.staff(), f"/staff/dishes/{other_dish.id}/available/", {"available": False}).status_code, 404)
+        self.assertEqual(self.post(Client(), f"/staff/dishes/{self.naan.id}/available/", {"available": False}).status_code, 403)
+
+    # --- team ---
+
+    def test_owner_adds_a_teammate_who_can_then_log_in(self):
+        owner = self.staff("owner")
+        bad = [({"username": "x", "role": "waiter", "password": "Str0ng-pass"}, "Usernames"),
+               ({"username": "newbie", "role": "chef", "password": "Str0ng-pass"}, "Pick a role"),
+               ({"username": "newbie", "role": "waiter", "password": "12345678"}, "too common"),
+               ({"username": "newbie", "role": "waiter", "password": "short"}, "too short"),
+               ({"username": self.users["waiter"].username.upper(), "role": "waiter", "password": "Str0ng-pass"}, "taken")]
+        for body, msg in bad:
+            r = self.post(owner, "/owner/team/data/", body)
+            self.assertEqual(r.status_code, 400, body)
+            self.assertIn(msg, r.json()["error"])
+        r = self.post(owner, "/owner/team/data/", {"username": "Newbie", "name": "New Bie", "role": "kitchen", "password": "Str0ng-pass"})
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("newbie", [u["username"] for u in r.json()["team"]])
+        c = Client()
+        self.assertEqual(c.post("/accounts/login/", {"username": "newbie", "password": "Str0ng-pass"}).status_code, 302)
+        self.assertEqual(c.get("/kitchen/").status_code, 200)
+        self.assertEqual(c.get("/staff/").status_code, 403)
+        self.assertEqual(self.post(self.staff(), "/owner/team/data/", {"username": "sneaky", "role": "owner", "password": "Str0ng-pass"}).status_code, 403)
+
+    def test_switching_a_login_off_or_resetting_it_ends_their_sessions(self):
+        owner, waiter, me = self.staff("owner"), self.staff(), self.users["owner"]
+        wid = self.users["waiter"].id
+        self.assertEqual(self.post(owner, f"/owner/team/{wid}/", {"active": False}).status_code, 200)
+        self.assertEqual(waiter.get("/staff/").status_code, 302)  # signed out
+        self.post(owner, f"/owner/team/{wid}/", {"active": True})
+        waiter = self.staff()
+        self.assertEqual(self.post(owner, f"/owner/team/{wid}/", {"password": "An0ther-pass"}).status_code, 200)
+        self.assertEqual(waiter.get("/staff/").status_code, 302)
+        self.assertEqual(self.post(owner, f"/owner/team/{me.id}/", {"active": False}).status_code, 400)
+        self.assertEqual(self.post(owner, f"/owner/team/{me.id}/", {"role": "waiter"}).status_code, 400)
+        outsider = make_restaurant("B")[4]["waiter"]
+        self.assertEqual(self.post(owner, f"/owner/team/{outsider.id}/", {"active": False}).status_code, 404)
+
+    def test_role_change_grants_and_removes_admin_access(self):
+        owner, w = self.staff("owner"), self.users["waiter"]
+        self.post(owner, f"/owner/team/{w.id}/", {"role": "owner"})
+        w.refresh_from_db()
+        self.assertTrue(w.is_staff and w.has_perm("core.change_dish"))
+        self.post(owner, f"/owner/team/{w.id}/", {"role": "waiter"})
+        w = User.objects.get(pk=w.pk)  # fresh object: permissions are cached per instance
+        self.assertFalse(w.is_staff or w.has_perm("core.change_dish"))
+
+    # --- admin scoped to one restaurant ---
+
+    def test_owner_admin_shows_only_their_restaurant(self):
+        services.set_access(self.users["owner"], "owner")
+        other, other_table, other_curry, _, _ = make_restaurant("B")
+        owner = self.staff("owner")
+        page = owner.get("/admin/core/dish/")
+        self.assertEqual(page.status_code, 200)
+        self.assertEqual({d.restaurant_id for d in page.context["cl"].queryset}, {self.r.id})
+        self.assertEqual(owner.get(f"/admin/core/dish/{other_curry.id}/change/").status_code, 302)  # not found for them
+        form = owner.get("/admin/core/dish/add/").context["adminform"].form
+        self.assertNotIn("restaurant", form.fields)
+        self.assertEqual(set(form.fields["category"].queryset), {self.curry.category})
+        r = owner.post("/admin/core/table/add/", {"number": 9, "x": 50, "y": 50})
+        self.assertEqual(r.status_code, 302)
+        self.assertEqual(Table.objects.get(number=9).restaurant, self.r)
+        self.assertEqual([x.id for x in owner.get("/admin/core/restaurant/").context["cl"].queryset], [self.r.id])
+        self.assertEqual(owner.get("/admin/core/restaurant/add/").status_code, 403)
+        self.assertEqual(owner.get("/admin/core/staffprofile/").status_code, 403)
+        req_form = owner.get("/admin/core/servicerequest/add/").context["adminform"].form
+        self.assertEqual({u.profile.restaurant_id for u in req_form.fields["assigned"].queryset}, {self.r.id})

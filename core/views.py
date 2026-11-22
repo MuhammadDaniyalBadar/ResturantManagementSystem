@@ -89,6 +89,7 @@ def order_json(order, now):
         "id": order.id,
         "table": order.table.number,
         "guest": order.guest.name if order.guest_id else "",
+        "guest_id": order.guest_id,
         "status": order.status,
         "label": order.get_status_display(),
         "seconds_left": left,
@@ -96,7 +97,7 @@ def order_json(order, now):
         "seconds_old": seconds_since(order.created_at, now),
         "total": str(order.total),
         "items": [
-            {"name": i.dish.name, "size": i.size_label, "qty": i.quantity, "note": i.note, "station": i.dish.station, "ready": bool(i.ready_at), "art": i.dish.picture, "prep": i.dish.prep_minutes, "deal": bool(i.deal_id)}
+            {"id": i.id, "name": i.dish.name, "size": i.size_label, "qty": i.quantity, "note": i.note, "station": i.dish.station, "ready": bool(i.ready_at), "art": i.dish.picture, "prep": i.dish.prep_minutes, "deal": bool(i.deal_id)}
             for i in items
         ],
     }
@@ -172,10 +173,10 @@ def menu_data(restaurant):
                 "sizes": [{"id": s.id, "label": s.label, "price": str(s.price)} for s in d.sizes.all()],
                 "art": d.picture,
                 "featured": d.featured,
+                "available": d.available,
                 "deals": deals.get(d.id, []),
             }
             for d in category.dish_set.all()
-            if d.available
         ]
         if dishes:
             categories.append({"name": category.name, "dishes": dishes})
@@ -197,6 +198,7 @@ def table_state(request, code):
     orders = orders_qs(bill=bill) if bill else Order.objects.none()
     requests = ServiceRequest.objects.filter(table=table).exclude(status=ServiceRequest.DONE).select_related("table", "assigned")
     out = {
+        "sold_out": list(Dish.objects.filter(restaurant=r, available=False).values_list("id", flat=True)),
         "guest": {"id": guest.id, "name": guest.name} if guest else None,
         "guests": [g.name for g in Guest.objects.filter(table=table, created_at__gte=now - timedelta(hours=6))],
         "orders": [order_json(o, now) for o in orders],
@@ -246,6 +248,18 @@ def table_order(request, code):
     table = get_table(code)
     order = services.place_order(table, read_json(request).get("items"), session_guest(request, table))
     return JsonResponse({"ok": True, "order_id": order.id})
+
+
+@require_POST
+@json_api
+def table_cancel(request, code, pk):
+    table = get_table(code)
+    guest = session_guest(request, table)
+    order = get_object_or_404(Order, pk=pk, table=table)
+    if guest is None:
+        raise services.OrderError("Tell us your name first.")
+    services.cancel_order(order, "guest", guest=guest)
+    return JsonResponse({"ok": True})
 
 
 @require_POST
@@ -343,7 +357,36 @@ def staff_data(request):
     reqs = ServiceRequest.objects.filter(restaurant=restaurant).exclude(status=ServiceRequest.DONE).select_related("table", "assigned")
     pay = Payment.objects.filter(bill__restaurant=restaurant, status=Payment.REQUESTED).select_related("guest", "bill__table")
     team = [{"id": u.id, "name": u.first_name or u.username} for u in User.objects.filter(profile__restaurant=restaurant, profile__role__in=[WAITER, OWNER])]
-    return JsonResponse({"currency": restaurant.currency, "orders": orders, "requests": [request_json(r, now) for r in reqs], "tables": floor_json(restaurant, now), "payments": [payment_json(p) for p in pay], "team": team, "me": request.user.id})
+    menu = [{"id": d.id, "name": d.name, "category": d.category.name, "art": d.picture, "available": d.available}
+            for d in Dish.objects.filter(restaurant=restaurant).select_related("category")]
+    return JsonResponse({"currency": restaurant.currency, "orders": orders, "menu": menu, "role": role, "requests": [request_json(r, now) for r in reqs], "tables": floor_json(restaurant, now), "payments": [payment_json(p) for p in pay], "team": team, "me": request.user.id})
+
+
+@require_POST
+@staff_only(WAITER, OWNER, api=True)
+@json_api
+def order_cancel(request, pk):
+    order = get_object_or_404(Order, pk=pk, restaurant=request.profile.restaurant)
+    services.cancel_order(order, request.user.username)
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+@staff_only(WAITER, OWNER, api=True)
+@json_api
+def item_remove(request, pk):
+    item = get_object_or_404(OrderItem, pk=pk, order__restaurant=request.profile.restaurant)
+    services.remove_item(item, request.user.username)
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+@staff_only(api=True)
+@json_api
+def dish_available(request, pk):
+    dish = get_object_or_404(Dish, pk=pk, restaurant=request.profile.restaurant)
+    services.set_available(dish, read_json(request).get("available"))
+    return JsonResponse({"ok": True})
 
 
 @require_POST
@@ -450,16 +493,17 @@ def owner_data(request):
         key = timezone.localtime(b.paid_at).date()
         day_sales[key] = day_sales.get(key, Decimal(0)) + services.bill_summary(b)["base"]
     days = [(week + timedelta(days=i)).date() for i in range(7)]
-    prep = Order.objects.filter(restaurant=r, ready_at__isnull=False, cooking_at__isnull=False, created_at__gte=today)
+    live = Order.objects.filter(restaurant=r).exclude(status=Order.CANCELLED)
+    prep = live.filter(ready_at__isnull=False, cooking_at__isnull=False, created_at__gte=today)
     prep_secs = [(o.ready_at - o.cooking_at).total_seconds() for o in prep]
-    best = (OrderItem.objects.filter(order__restaurant=r, order__created_at__gte=week).values(name=F("dish__name"), art=F("dish__art"), photo=F("dish__photo")).annotate(qty=Sum("quantity")).order_by("-qty")[:5])
-    hours = dict(Order.objects.filter(restaurant=r, created_at__gte=week).annotate(h=ExtractHour("created_at")).values_list("h").annotate(c=Count("id")).order_by("h"))
+    best = (OrderItem.objects.filter(order__restaurant=r, order__created_at__gte=week).exclude(order__status=Order.CANCELLED).values(name=F("dish__name"), art=F("dish__art"), photo=F("dish__photo")).annotate(qty=Sum("quantity")).order_by("-qty")[:5])
+    hours = dict(live.filter(created_at__gte=week).annotate(h=ExtractHour("created_at")).values_list("h").annotate(c=Count("id")).order_by("h"))
     reviews = Review.objects.filter(bill__restaurant=r).select_related("guest", "bill__table")
     avg = reviews.aggregate(a=Avg("stars"))["a"]
     return JsonResponse({
         "currency": r.currency,
         "tables_total": r.tables.count(), "tables_in_use": Bill.objects.filter(restaurant=r).exclude(status=Bill.PAID).count(),
-        "orders_today": Order.objects.filter(restaurant=r, created_at__gte=today).count(),
+        "orders_today": live.filter(created_at__gte=today).count(),
         "sales_today": money(day_sales.get(today.date(), Decimal(0))),
         "avg_prep": int(sum(prep_secs) / len(prep_secs)) if prep_secs else None,
         "days": [{"label": d.strftime("%a"), "sales": float(day_sales.get(d, 0))} for d in days],
@@ -469,6 +513,39 @@ def owner_data(request):
         "reviews": [{"stars": v.stars, "comment": v.comment, "guest": v.guest.name if v.guest_id else "Guest", "table": v.bill.table.number, "age": seconds_since(v.created_at, now)} for v in reviews[:12]],
         "tables": floor_json(r, now),
     })
+
+
+# ---------- team (owner) ----------
+
+def team_json(restaurant, me):
+    return [{"id": u.id, "username": u.username, "name": u.first_name, "role": u.profile.role, "active": u.is_active, "me": u.id == me.id,
+             "last_login": u.last_login.isoformat() if u.last_login else None}
+            for u in User.objects.filter(profile__restaurant=restaurant).select_related("profile").order_by("profile__role", "username")]
+
+
+@staff_only(OWNER)
+def team_page(request):
+    return render(request, "team.html", {"restaurant": request.profile.restaurant})
+
+
+@staff_only(OWNER, api=True)
+@json_api
+def team_data(request):
+    r = request.profile.restaurant
+    if request.method == "POST":
+        d = read_json(request)
+        services.add_staff(r, d.get("username"), d.get("name"), d.get("role"), d.get("password"))
+    return JsonResponse({"team": team_json(r, request.user), "roles": StaffProfile.ROLES})
+
+
+@require_POST
+@staff_only(OWNER, api=True)
+@json_api
+def team_member(request, pk):
+    user = get_object_or_404(User, pk=pk, profile__restaurant=request.profile.restaurant)
+    d = read_json(request)
+    services.update_staff(request.user, user, active=d.get("active"), role=d.get("role"), password=d.get("password"))
+    return JsonResponse({"ok": True})
 
 
 # ---------- login with lockout, health check ----------

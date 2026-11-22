@@ -40,6 +40,13 @@ Set the restaurant's WiFi, service charge, tax and reward in the admin (Restaura
 
 If you ran an older version, delete `db.sqlite3`, then run `migrate` and `seed_demo` again.
 
+## Running the floor (Beta 2)
+
+- **Sold out:** on the service desk, open **Menu** and tap a dish. Guests' phones grey it out at once and it cannot be ordered; tap again when it is back.
+- **Change an order:** on a ticket, the × next to a dish removes it, **Cancel** cancels the whole order (it comes off the bill and the kitchen board). Allowed until the order is served and while nobody has started paying. A guest can cancel their own order until the waiter sends it to the kitchen. Cancelled orders stay in the admin with who cancelled them.
+- **Team:** the owner adds waiters, kitchen staff and other owners at **Team**, changes roles, resets passwords and switches logins off. Switching off or resetting signs that person out everywhere. Passwords need 8+ characters and cannot be common or only numbers.
+- **Menu and tables:** the admin shows an owner only their own restaurant: dishes, tables, deals, quiz, orders and bills. Team logins are managed on the Team page, not in the admin.
+
 ## Look and feel
 
 One dark, neutral operations theme: Inter type, a single blue accent, and colour only where it means something (green live or good, amber attention, red late). Staff pages (service desk, kitchen display, overview, QR codes) share a left navigation rail that becomes a top bar on narrow screens. Each dish has an illustration (`core/static/core/dishes/`). In the admin, set a dish's **Art** to pick its illustration and tick **Featured** to show it as the Chef's pick. A dish with no art gets an initial. Fonts load from Google Fonts, so the first view needs an internet connection; without it the app falls back to system fonts.
@@ -72,9 +79,8 @@ Covers prices computed on the server, status rules and roles, one restaurant nev
 
 ## Still to come (see the SOW)
 
-Beta 2: sold-out toggle, order edits and cancels, staff management, admin scoped per restaurant. Beta 3: restaurant signup, platform console, branding, plans. Beta 4: reservations, inventory, languages, payment gateway. Known shortcuts, each marked `shortcut:` in the code:
+Beta 3: restaurant signup, platform console, branding, plans. Beta 4: reservations, inventory, languages, payment gateway. Known shortcuts, each marked `shortcut:` in the code:
 
-- Admin is not scoped per restaurant: fine for one restaurant, fix before a second one.
 - Uploaded photos are served by Django from the disk: fine for a few restaurants, move to S3 or a CDN at scale.
 - Guests at a table share the order list but not a cart.
 

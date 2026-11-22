@@ -10,6 +10,7 @@ urlpatterns = [
     path("t/<str:code>/join/", views.table_join, name="table_join"),
     path("t/<str:code>/member/", views.table_member, name="table_member"),
     path("t/<str:code>/order/", views.table_order, name="table_order"),
+    path("t/<str:code>/orders/<int:pk>/cancel/", views.table_cancel, name="table_cancel"),
     path("t/<str:code>/call/", views.table_call, name="table_call"),
     path("t/<str:code>/pay/", views.table_pay, name="table_pay"),
     path("t/<str:code>/review/", views.table_review, name="table_review"),
@@ -19,6 +20,9 @@ urlpatterns = [
     path("staff/", views.staff_page, name="staff"),
     path("staff/data/", views.staff_data, name="staff_data"),
     path("staff/orders/<int:pk>/advance/", views.order_advance, name="order_advance"),
+    path("staff/orders/<int:pk>/cancel/", views.order_cancel, name="order_cancel"),
+    path("staff/items/<int:pk>/remove/", views.item_remove, name="item_remove"),
+    path("staff/dishes/<int:pk>/available/", views.dish_available, name="dish_available"),
     path("staff/requests/<int:pk>/<str:action>/", views.request_action, name="request_action"),
     path("staff/payments/<int:pk>/paid/", views.payment_paid, name="payment_paid"),
     path("staff/bills/<int:pk>/close/", views.bill_close, name="bill_close"),
@@ -30,4 +34,7 @@ urlpatterns = [
     # owner
     path("owner/", views.owner_page, name="owner"),
     path("owner/data/", views.owner_data, name="owner_data"),
+    path("owner/team/", views.team_page, name="team"),
+    path("owner/team/data/", views.team_data, name="team_data"),
+    path("owner/team/<int:pk>/", views.team_member, name="team_member"),
 ]

@@ -16,6 +16,8 @@ const RNAME = JSON.parse($('#rname-data').textContent), TNUM = JSON.parse($('#tn
 const CUR = MENU.currency;
 const DISHES = MENU.categories.flatMap((c) => c.dishes.map((d) => ({ ...d, cat: c.name })));
 const byId = Object.fromEntries(DISHES.map((d) => [d.id, d]));
+let OUT = new Set(DISHES.filter((d) => !d.available).map((d) => d.id));  // sold out, updated live
+const isOut = (id) => OUT.has(id);
 const SPICE = { Mild: 1, Medium: 2, Hot: 3 };
 const STEPS = ['placed', 'cooking', 'ready', 'served'];
 const METHODS = [['cash', 'Cash', 'cash'], ['bank', 'Bank transfer', 'bank'], ['card', 'Card', 'card'], ['apple', 'Apple Pay', 'phone'], ['google', 'Google Pay', 'phone']];
@@ -56,8 +58,8 @@ function changeQty(l, by) {
   });
   S.cart = S.cart.filter((x) => x.qty > 0);
 }
-function quick(d) { addLine(d, d.sizes.length ? d.sizes[0].id : '', 1); toast(d.name + ' added'); render(); }
-function openDish(d) { S.sheet = { d, size: d.sizes.length ? d.sizes[0].id : '', qty: 1 }; S.sheetIn = true; render(); }
+function quick(d) { if (isOut(d.id)) return toast(d.name + ' is sold out', true); addLine(d, d.sizes.length ? d.sizes[0].id : '', 1); toast(d.name + ' added'); render(); }
+function openDish(d) { if (isOut(d.id)) return toast(d.name + ' is sold out', true); S.sheet = { d, size: d.sizes.length ? d.sizes[0].id : '', qty: 1 }; S.sheetIn = true; render(); }
 const leftOf = (o) => (o.endsAt ? Math.max(0, Math.round((o.endsAt - Date.now()) / 1000)) : null);
 const live_orders = () => S.orders.filter((o) => o.status !== 'served');
 const focusStatus = () => live_orders().find((o) => o.status === 'cooking') || live_orders()[0] || S.orders[0];
@@ -82,6 +84,9 @@ const priceLine = (d) => h('span', { class: 'col', style: 'gap:0;padding-right:4
   h('span', { class: 'muted sm', style: 'min-height:16px' }, d.sizes.length ? 'from' : ''),
   h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h);white-space:nowrap' }, money(CUR, lowest(d))));
 function gridCard(d, i) {
+  if (isOut(d.id)) return h('div', { class: A('gcard out'), style: `--i:${i}` },
+    h('div', { class: 'pslot' }, plate(d.art, d.name, 116)),
+    h('div', { class: 'gmain' }, h('span', { class: 'bb', style: 'font-size:15px;line-height:1.2' }, d.name), h('span', { class: 'tag hot', style: 'align-self:flex-start' }, 'Sold out')));
   return h('div', { class: A('gcard'), style: `--i:${i}` },
     h('div', { class: 'pslot' }, plate(d.art, d.name, 116)),
     h('button', { class: 'gmain', onclick: () => openDish(d) },
@@ -111,7 +116,7 @@ function shell(inner) {
 function sheet() {
   if (!S.sheet) return null;
   const { d } = S.sheet, z = d.sizes.find((s) => String(s.id) === String(S.sheet.size)), price = z ? +z.price : +d.price;
-  const pairs = DISHES.filter((x) => x.id !== d.id && x.cat !== d.cat && !x.sizes.length && !d.deals.some((e) => e.partner_id === x.id)).slice(0, 2);
+  const pairs = DISHES.filter((x) => x.id !== d.id && !isOut(x.id) && x.cat !== d.cat && !x.sizes.length && !d.deals.some((e) => e.partner_id === x.id)).slice(0, 2);
   return shell([
     h('div', { style: 'position:relative;display:flex;justify-content:center;padding:8px 0 2px' },
       h('div', { style: 'position:absolute;top:14px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(76,141,255,.25),transparent 68%)' }),
@@ -122,7 +127,7 @@ function sheet() {
     h('p', { class: 'muted' }, d.description),
     h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, SPICE[d.spice] ? h('span', { class: 'tag' + (d.spice === 'Hot' ? ' hot' : '') }, d.spice + ' spice') : null, d.allergens.map((a) => h('span', { class: 'tag al' }, 'Contains ' + a))),
     d.sizes.length ? h('div', { class: 'seg' }, d.sizes.map((s) => h('button', { class: String(S.sheet.size) === String(s.id) ? 'on' : '', onclick: () => { S.sheet.size = s.id; render(); } }, s.label + ' · ' + money(CUR, s.price)))) : null,
-    d.deals.map((e) => h('div', { class: 'col', style: 'padding:14px;border-radius:14px;gap:6px;background:var(--acc-s);border:1px solid rgba(76,141,255,.4);color:var(--fg)' },
+    d.deals.filter((e) => !isOut(e.partner_id)).map((e) => h('div', { class: 'col', style: 'padding:14px;border-radius:14px;gap:6px;background:var(--acc-s);border:1px solid rgba(76,141,255,.4);color:var(--fg)' },
       h('span', { class: 'bb' }, 'Deal'),
       h('div', { class: 'row', style: 'gap:12px' }, plate(e.art, e.partner, 48, 'flat'), h('span', { class: 'grow bb' }, '+ ' + e.partner, h('span', { style: 'display:block;font-weight:500' }, h('b', {}, money(CUR, e.price)), ' ', h('s', {}, money(CUR, e.normal)))),
         h('button', { class: 'btn sm', style: 'background:var(--acc);color:#fff;box-shadow:none', onclick: () => { addDeal(d, e); S.sheet = null; toast('Deal added'); render(); } }, 'Add deal')))),
@@ -153,7 +158,7 @@ function menuView() {
   const allergens = [...new Set(DISHES.flatMap((d) => d.allergens))].slice(0, 4);
   const vis = DISHES.filter((d) => (S.cat === 'All' || d.cat === S.cat) && !d.allergens.some((a) => S.avoid[a]));
   const hidden = DISHES.filter((d) => d.allergens.some((a) => S.avoid[a])).length;
-  const pick = DISHES.find((d) => d.featured);
+  const pick = DISHES.find((d) => d.featured && !isOut(d.id));
   const cats = ['All', ...MENU.categories.map((c) => c.name)];
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, topbar(),
     h('div', { class: 'scroll', style: 'padding:8px 18px 130px' },
@@ -171,7 +176,7 @@ function cartView() {
     return h('div', { class: A('card'), style: `--i:${i};flex-direction:row;gap:14px;align-items:center;padding:12px` },
       plate(d.art, d.name, 64),
       h('div', { class: 'col grow', style: 'gap:8px' },
-        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name, l.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h)' }, money(CUR, unit(l) * l.qty))),
+        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name, l.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null, isOut(d.id) ? h('span', { class: 'tag hot', style: 'margin-left:6px' }, 'Sold out') : null), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h)' }, money(CUR, unit(l) * l.qty))),
         h('div', { class: 'spread' },
           h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { changeQty(l, -1); render(); } }, icon('minus', 14, 2.6)), h('span', {}, l.qty), h('button', { 'aria-label': 'More', onclick: () => { changeQty(l, 1); render(); } }, icon('plus', 14, 2.6))),
           h('input', { id: 'note-' + i, style: 'width:120px;padding:8px 10px;font-size:12px', 'aria-label': 'Note for the kitchen', placeholder: 'Add a note', value: l.note, maxlength: 140, oninput: (e) => { l.note = e.target.value; } }))));
@@ -181,7 +186,8 @@ function cartView() {
     h('div', { class: 'col', style: 'padding:18px 20px 30px;gap:12px;background:var(--s1);border-radius:18px 18px 0 0;border-top:1px solid var(--line);box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
       h('div', { class: 'spread' }, h('span', { class: 'muted' }, 'Subtotal'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700' }, money(CUR, sub()))),
       h('p', { class: 'muted sm' }, 'The restaurant confirms your final price. Service charge and tax are added to your bill.'),
-      h('button', { class: 'btn wide', disabled: !S.cart.length, onclick: place }, 'Place order')));
+      S.cart.some((l) => isOut(l.id)) ? h('p', { class: 'sm', style: 'color:#ff8f87;font-weight:600' }, 'Remove the sold-out dishes to place your order.') : null,
+      h('button', { class: 'btn wide', disabled: !S.cart.length || S.cart.some((l) => isOut(l.id)), onclick: place }, 'Place order')));
 }
 async function place() {
   if (!S.guest) { S.askName = true; S.sheetIn = true; render(); return; }
@@ -216,7 +222,9 @@ function orderCard(o, i) {
     h('div', { class: 'steps' }, STEPS.map((s, n) => h('div', { class: (n <= step ? 'on' : '') + (n === step && o.status !== 'served' ? ' now' : '') }, h('i'), s[0].toUpperCase() + s.slice(1)))),
     h('p', { class: 'muted' }, msg),
     h('ul', { class: 'col', style: 'gap:10px' }, o.items.map((it) => h('li', { class: 'row', style: 'gap:12px' }, plate(it.art, it.name, 34, 'flat'), h('span', { class: 'grow' }, it.qty + ' × ' + it.name + (it.size ? ' (' + it.size + ')' : ''), it.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null, it.note ? h('span', { class: 'muted sm', style: 'display:block' }, 'Note: ' + it.note) : null)))),
-    h('div', { class: 'spread', style: 'border-top:1.5px dashed var(--line);padding-top:10px' }, h('span', { class: 'muted' }, 'Total'), h('span', { class: 'd num bb', style: 'font-size:20px' }, money(CUR, o.total))));
+    h('div', { class: 'spread', style: 'border-top:1.5px dashed var(--line);padding-top:10px' }, h('span', { class: 'muted' }, 'Total'), h('span', { class: 'd num bb', style: 'font-size:20px' }, money(CUR, o.total))),
+    o.status === 'placed' && S.guest && o.guest_id === S.guest.id ? h('button', { class: 'btn red sm', style: 'align-self:flex-start',
+      onclick: () => { if (confirm('Cancel this order? You can order again from the menu.')) act(() => api(url('orders/' + o.id + '/cancel/'), {}).then(() => toast('Order cancelled')), refreshState); } }, 'Cancel this order') : null);
 }
 function hubTile(ic, label, sub, to) {
   return h('button', { class: 'card', style: 'align-items:center;gap:4px;padding:16px 6px;text-align:center', onclick: () => go(to) }, icon(ic, 28, 1.8), h('span', { class: 'bb' }, label), h('span', { class: 'muted sm' }, sub));
@@ -374,6 +382,7 @@ async function refreshState() {
   const s = await api(url('state/'));
   const now = Date.now();
   S.orders = s.orders.map((o) => ({ ...o, endsAt: o.seconds_left === null ? null : now + o.seconds_left * 1000 }));
+  OUT = new Set(s.sold_out);
   Object.assign(S, { requests: s.requests, guest: s.guest, guests: s.guests, wifi: s.wifi, reward: s.reward, bill: s.bill, payments: s.payments, paid: s.paid });
   if (!S.guest && !S.nameAsked) { S.nameAsked = true; S.askName = true; S.sheetIn = true; }
   if (S.paid && ['bill', 'status', 'call'].includes(S.view) && !S.orders.length) { S.view = 'thanks'; S.anim = true; toast('Payment confirmed'); }

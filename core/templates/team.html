@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Team · {{ restaurant.name }}{% endblock %}
+{% block bodyclass %}ops{% endblock %}
+{% block body %}
+{% include "_rail.html" with active="team" %}
+<div class="pagehead"><div><h1>Team</h1><p>Logins for your waiters, kitchen and managers. Switching a login off signs that person out everywhere.</p></div></div>
+<main class="page" style="padding-top: 20px">
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; align-items: start">
+    <section class="card" style="padding: 0; gap: 0; overflow: hidden"><div id="list"></div></section>
+    <form class="card" id="add" style="padding: 20px; gap: 14px">
+      <h2 style="font-size: 16px; font-weight: 650">Add a teammate</h2>
+      <label class="f">Name<input name="name" maxlength="150" autocomplete="off" placeholder="e.g. Sara Khan"></label>
+      <label class="f">Username<input name="username" required maxlength="30" autocomplete="off" placeholder="e.g. sara" pattern="[A-Za-z0-9_.\-]{3,30}"></label>
+      <label class="f">Role<select name="role" id="role-in"></select></label>
+      <label class="f">Password<input name="password" type="password" required minlength="8" autocomplete="new-password"></label>
+      <p class="muted sm">At least 8 characters, not only numbers and not a common password. Share it with them in person.</p>
+      <button class="btn" type="submit">Add teammate</button>
+    </form>
+  </div>
+</main>
+{% endblock %}
+{% block script %}
+<script>
+const $ = (s) => document.querySelector(s);
+const ROLE_HELP = { owner: 'Everything, including menu, reports and team', waiter: 'Service desk: orders, requests, payments', kitchen: 'Kitchen display only' };
+let D = null;
+
+function member(u) {
+  const label = Object.fromEntries(D.roles)[u.role];
+  return h('div', { class: 'col', style: 'gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)' + (u.active ? '' : ';opacity:.6') },
+    h('div', { class: 'spread' },
+      h('div', { class: 'col', style: 'gap:2px' }, h('span', { class: 'b' }, (u.name || u.username) + (u.me ? ' (you)' : '')), h('span', { class: 'muted sm' }, '@' + u.username + ' · ' + (u.last_login ? 'last in ' + new Date(u.last_login).toLocaleString() : 'never logged in'))),
+      h('span', { class: 'st ' + (u.active ? 'eating' : 'free') }, u.active ? label : 'Switched off')),
+    u.me ? null : h('div', { class: 'row', style: 'flex-wrap:wrap;gap:8px' },
+      h('select', { 'aria-label': 'Role for ' + u.username, style: 'padding:7px 10px', onchange: (e) => save(u, { role: e.target.value }, 'Role changed') }, D.roles.map(([v, l]) => h('option', { value: v, selected: v === u.role }, l))),
+      h('button', { class: 'btn ghost sm', onclick: () => { const p = prompt('New password for ' + u.username + ' (at least 8 characters):'); if (p) save(u, { password: p }, 'Password changed. They are signed out everywhere.'); } }, 'Reset password'),
+      h('button', { class: 'btn sm ' + (u.active ? 'red' : 'ghost'), onclick: () => { if (!u.active || confirm('Switch off ' + u.username + '? They are signed out right away.')) save(u, { active: !u.active }, u.active ? 'Login switched off' : 'Login switched on'); } }, u.active ? 'Switch off' : 'Switch on')));
+}
+function render() {
+  $('#list').replaceChildren(...D.team.map(member));
+  if (!$('#role-in').options.length) $('#role-in').replaceChildren(...D.roles.map(([v, l]) => h('option', { value: v, selected: v === 'waiter' }, l + ' · ' + ROLE_HELP[v])));
+}
+async function load(body) { D = await api('/owner/team/data/', body); render(); }
+function save(u, body, done) { act(() => api('/owner/team/' + u.id + '/', body).then(() => toast(done)), () => load()); }
+
+$('#add').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = new FormData(e.target), body = Object.fromEntries(f.entries());
+  act(() => load(body).then(() => { e.target.reset(); render(); toast(body.username + ' added'); }));
+});
+load();
+</script>
+{% endblock %}

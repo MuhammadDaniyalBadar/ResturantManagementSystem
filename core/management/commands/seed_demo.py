@@ -1,9 +1,10 @@
 import os
 
-from django.contrib.auth.models import Permission, User
+from django.contrib.auth.models import User
 from django.core.management.base import BaseCommand
 from django.db import transaction
 
+from core import services
 from core.models import Category, Deal, Dish, DishSize, QuizQuestion, Restaurant, StaffProfile, Table
 
 # (category, name, description, price, spice, allergens, station, prep minutes, [(size, price)], art)
@@ -73,10 +74,9 @@ class Command(BaseCommand):
             QuizQuestion.objects.create(restaurant=restaurant, text=text, options=options, answer=answer, position=position)
 
         for username, first, role in (("owner", "Ayesha", StaffProfile.OWNER), ("waiter", "Aman", StaffProfile.WAITER), ("sara", "Sara", StaffProfile.WAITER), ("kitchen", "Bilal", StaffProfile.KITCHEN)):
-            user = User.objects.create_user(username, password=password, first_name=first, is_staff=(role == StaffProfile.OWNER))
+            user = User.objects.create_user(username, password=password, first_name=first)
             StaffProfile.objects.create(user=user, restaurant=restaurant, role=role)
-            if role == StaffProfile.OWNER:  # the owner edits the menu and tables in the admin
-                user.user_permissions.add(*Permission.objects.filter(content_type__app_label="core"))
+            services.set_access(user, role)
 
         self.stdout.write(self.style.SUCCESS("Demo restaurant created."))
         self.stdout.write(f"Logins: owner, waiter, sara, kitchen. Password: {password if not os.environ.get('DEMO_PASSWORD') else '(from DEMO_PASSWORD)'}")

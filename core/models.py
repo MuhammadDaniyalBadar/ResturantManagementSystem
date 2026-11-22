@@ -188,8 +188,8 @@ class Bill(models.Model):
 
 
 class Order(models.Model):
-    PLACED, COOKING, READY, SERVED = "placed", "cooking", "ready", "served"
-    STATUSES = [(PLACED, "Placed"), (COOKING, "Cooking"), (READY, "Ready"), (SERVED, "Served")]
+    PLACED, COOKING, READY, SERVED, CANCELLED = "placed", "cooking", "ready", "served", "cancelled"
+    STATUSES = [(PLACED, "Placed"), (COOKING, "Cooking"), (READY, "Ready"), (SERVED, "Served"), (CANCELLED, "Cancelled")]
 
     restaurant = models.ForeignKey(Restaurant, on_delete=models.CASCADE, related_name="orders")
     table = models.ForeignKey(Table, on_delete=models.CASCADE, related_name="orders")
@@ -200,6 +200,8 @@ class Order(models.Model):
     cooking_at = models.DateTimeField(null=True, blank=True)
     ready_at = models.DateTimeField(null=True, blank=True)
     served_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+    cancelled_by = models.CharField(max_length=60, blank=True, help_text="Who cancelled it: a staff username or 'guest'")
 
     class Meta:
         ordering = ["created_at"]

@@ -12,17 +12,31 @@ const $ = (s) => document.querySelector(s);
 const S = { tab: 'orders', sel: null, data: null, first: true };
 const anim = (n) => (S.first ? `animation-delay:${n * 60}ms` : 'animation:none');
 
-const lines = (o) => h('ul', {}, o.items.map((i) => h('li', {}, plate(i.art, i.name, 40, 'flat'),
+const lines = (o, edit) => h('ul', {}, o.items.map((i) => h('li', {}, plate(i.art, i.name, 40, 'flat'),
   h('span', { class: 'grow' }, i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : ''), i.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null,
     i.note ? h('span', { class: 'tag al', style: 'display:block;margin-top:3px;width:fit-content' }, 'Note: ' + i.note) : null),
-  h('span', { class: 'muted sm' }, i.station))));
+  h('span', { class: 'muted sm' }, i.station),
+  edit ? h('button', { class: 'iconbtn', style: 'width:30px;height:30px;color:var(--muted)', 'aria-label': 'Remove ' + i.name, title: 'Remove',
+    onclick: () => { if (confirm(`Remove ${i.qty} × ${i.name} from table ${o.table}'s order?`)) act(() => api('/staff/items/' + i.id + '/remove/', {}), refresh); } }, icon('x', 16, 2.4)) : null)));
 
 function orderCard(o, n) {
   return h('div', { class: 'ticket' + (o.status === 'placed' ? ' new' : ''), style: anim(n) },
     h('div', { class: 'spread' }, h('span', { class: 'd', style: 'font-size:21px;font-weight:700' }, 'Table ' + o.table), h('span', { class: 'muted sm' }, (o.guest ? o.guest + ' · ' : '') + '#' + o.id + ' · ' + ago(o.seconds_old))),
-    lines(o),
+    lines(o, true),
     o.status === 'cooking' && o.seconds_left !== null ? h('div', { class: 'muted sm' }, 'About ', h('b', { class: 'timer', style: 'color:var(--fg)' }, countdown(o.seconds_left)), ' left') : null,
-    o.action ? h('button', { class: 'btn', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/orders/' + o.id + '/advance/', {}), refresh); } }, o.action) : null);
+    h('div', { class: 'row' },
+      o.action ? h('button', { class: 'btn grow', onclick: (e) => { e.target.disabled = true; act(() => api('/staff/orders/' + o.id + '/advance/', {}), refresh); } }, o.action) : h('span', { class: 'grow' }),
+      h('button', { class: 'btn red sm', onclick: () => { if (confirm(`Cancel order #${o.id} for table ${o.table}? It comes off the bill.`)) act(() => api('/staff/orders/' + o.id + '/cancel/', {}), refresh); } }, 'Cancel')));
+}
+function menuTab() {
+  const cats = [...new Set(S.data.menu.map((d) => d.category))], out = S.data.menu.filter((d) => !d.available).length;
+  return h('div', { class: 'col', style: 'gap:18px;max-width:880px' },
+    h('p', { class: 'muted' }, out ? out + (out === 1 ? ' dish is' : ' dishes are') + ' sold out. Guests see it on their phones right away.' : 'Everything is available. Tap a dish to mark it sold out; guests see it right away.'),
+    cats.map((c) => h('section', { class: 'col', style: 'gap:8px' }, h('h2', { class: 'sm muted', style: 'text-transform:uppercase;letter-spacing:.06em;font-weight:650' }, c),
+      h('div', { class: 'card', style: 'padding:6px 14px;gap:0' }, S.data.menu.filter((d) => d.category === c).map((d) => h('div', { class: 'spread', style: 'padding:10px 0;border-bottom:1px solid var(--line)' },
+        h('span', { class: 'row', style: d.available ? '' : 'opacity:.55' }, plate(d.art, d.name, 36, 'flat'), h('span', { class: 'b' }, d.name)),
+        h('button', { class: 'btn sm ' + (d.available ? 'ghost' : 'red'), 'aria-pressed': String(!d.available), style: 'min-width:120px',
+          onclick: () => act(() => api('/staff/dishes/' + d.id + '/available/', { available: !d.available }), refresh) }, d.available ? 'Available' : 'Sold out')))))));
 }
 function assignSelect(req) {
   return h('select', { 'aria-label': 'Assign to', style: 'padding:8px 10px;border-radius:12px', onchange: (e) => act(() => api('/staff/requests/' + req.id + '/assign/', { user_id: +e.target.value }), refresh) },
@@ -76,10 +90,10 @@ function floorTab() {
 
 function render() {
   if (!S.data) return;
-  const tabs = [['orders', 'Orders'], ['floor', 'Floor map']];
+  const tabs = [['orders', 'Orders'], ['floor', 'Floor map'], ['menu', 'Menu']];
   $('#tabs').replaceChildren(...tabs.map(([k, l]) => h('button', { class: 'chip' + (S.tab === k ? ' on' : ''), onclick: () => { S.tab = k; render(); } }, l)));
   const keep = window.scrollY;
-  $('#main').replaceChildren(S.tab === 'floor' ? floorTab() : ordersTab());
+  $('#main').replaceChildren(S.tab === 'floor' ? floorTab() : S.tab === 'menu' ? menuTab() : ordersTab());
   window.scrollTo({ top: keep });
   S.first = false;
 }

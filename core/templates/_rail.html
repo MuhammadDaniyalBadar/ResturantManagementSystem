@@ -8,6 +8,7 @@
     {% if request.user.profile.role == "owner" %}
     <a href="{% url 'owner' %}" class="{% if active == 'owner' %}on{% endif %}">Overview</a>
     <a href="{% url 'qr' %}" class="{% if active == 'qr' %}on{% endif %}">Table QR codes</a>
+    <a href="{% url 'team' %}" class="{% if active == 'team' %}on{% endif %}">Team</a>
     <a href="/admin/">Menu and tables</a>
     {% endif %}
   </nav>
