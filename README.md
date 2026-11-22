@@ -40,6 +40,20 @@ Set the restaurant's WiFi, service charge, tax and reward in the admin (Restaura
 
 If you ran an older version, delete `db.sqlite3`, then run `migrate` and `seed_demo` again.
 
+## Selling it: signup, plans and your platform console
+
+- **Sign-up:** restaurants sign themselves up at `/signup/` (also the "Start a free trial" button on the home page). They get a 14-day free trial of Pro, their tables and QR codes, and a setup checklist on their overview.
+- **Plans** (in `core/models.py`, `PLANS`): Starter Rs 4,999 (10 tables, 5 staff), Pro Rs 9,999 (40 tables, 25 staff), Enterprise Rs 24,999 (no limits). Limits apply when adding tables or staff. When a trial or paid period ends, or you pause a restaurant, guests cannot order or book; staff see a notice.
+- **Platform console** at `/platform/`, for superusers only (the demo creates `platform` with the demo password). See every restaurant, its status, plan, usage, 30-day orders and sales; change plan, **Mark paid** (records a bank or cash payment and extends the period), extend a trial, pause or resume. Monthly revenue and payments collected are at the top.
+- **Online payment:** not connected yet. Plan payments go through one function, `services.record_plan_payment`; a payment gateway calls the same function when it is added, so renewals become automatic.
+
+## Brand, bookings, stock and languages
+
+- **Settings and plan** (owner): logo, brand colour (used across the guest phone and staff screens), tagline, currency, service charge, tax, guest WiFi, rewards; current plan and usage; the restaurant's booking link.
+- **Reservations:** guests book at `/book/<restaurant>/` (link on the Settings page). Bookings arrive live on **Reservations** for waiters and owners: confirm (emails the guest if they gave an email), seat at a table, cancel or mark no-show.
+- **Inventory** (owner): track ingredients with a warning level; give each dish a recipe in Menu and tables. Stock is taken when an order goes to the kitchen and returned if it is cancelled. A dish sells out by itself when an ingredient cannot cover one more portion and comes back on restock (unless someone marked it sold out by hand). Low stock shows on the kitchen display and the overview.
+- **Urdu:** guests switch the phone between English and اردو (top right); Urdu is right to left with a Nastaliq font. The choice is remembered on that phone. Dish names, descriptions, quiz questions and messages from the server stay as written.
+
 ## Running the floor (Beta 2)
 
 - **Sold out:** on the service desk, open **Menu** and tap a dish. Guests' phones grey it out at once and it cannot be ordered; tap again when it is back.
@@ -79,7 +93,7 @@ Covers prices computed on the server, status rules and roles, one restaurant nev
 
 ## Still to come (see the SOW)
 
-Beta 3: restaurant signup, platform console, branding, plans. Beta 4: reservations, inventory, languages, payment gateway. Known shortcuts, each marked `shortcut:` in the code:
+A payment gateway (guest bills and plan renewals), Urdu for staff screens and server messages, translated dish names, reserved tables on the floor map. Known shortcuts, each marked `shortcut:` in the code:
 
 - Uploaded photos are served by Django from the disk: fine for a few restaurants, move to S3 or a CDN at scale.
 - Guests at a table share the order list but not a cart.

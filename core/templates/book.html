@@ -18,7 +18,7 @@
     {% csrf_token %}
     <h1 style="font-size: 26px; font-weight: 700">Book a <span class="gold">table</span></h1>
     {% if error %}<p role="alert" style="color: #ff8f87; font-weight: 600">{{ error }}</p>{% endif %}
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px">
+    <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px">
       <label class="f">Date<input name="date" type="date" required min="{{ today }}" max="{{ last }}" value="{{ v.date|default:today }}"></label>
       <label class="f">Time<input name="time" type="time" required value="{{ v.time|default:'20:00' }}" step="900"></label>
     </div>

@@ -25,16 +25,16 @@ function bars(days) {
       + (d.sales ? `<text x="${cx.toFixed(1)}" y="${(H - 28 - hgt).toFixed(1)}" font-size="10" font-weight="700" fill="#e9ecf1" text-anchor="middle">${Math.round(d.sales)}</text>` : '')
       + `<text x="${cx.toFixed(1)}" y="${H - 8}" font-size="10" fill="#8e97a8" text-anchor="middle">${d.label}</text>`;
   }).join('');
-  return svg(`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Sales for each of the last seven days" style="display:block"><defs><linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6ea0ff"/><stop offset="1" stop-color="#3b78f0"/></linearGradient></defs>${parts}</svg>`);
+  return svg(`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Sales for each of the last seven days" style="display:block"><defs><linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--acc-h)"/><stop offset="1" style="stop-color:var(--acc)"/></linearGradient></defs>${parts}</svg>`);
 }
 function area(hours) {
   const W = 320, H = 150, max = Math.max(1, ...hours.map((x) => x.orders)), step = (W - 28) / (hours.length - 1);
   const pts = hours.map((x, i) => [14 + i * step, H - 26 - (H - 50) * x.orders / max]), pk = hours.reduce((b, x, i, a) => (x.orders > a[b].orders ? i : b), 0);
   const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
   const labels = hours.map((x, i) => (i % 2 === 0 ? `<text x="${pts[i][0].toFixed(1)}" y="${H - 8}" font-size="10" fill="#8e97a8" text-anchor="middle">${x.hour}</text>` : '')).join('');
-  return svg(`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Orders per hour over the last seven days" style="display:block"><defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c8dff" stop-opacity=".35"/><stop offset="1" stop-color="#4c8dff" stop-opacity="0"/></linearGradient></defs>`
-    + `<path d="${line} L${pts.at(-1)[0].toFixed(1)} ${H - 26} L14 ${H - 26}Z" fill="url(#ga)"/><path d="${line}" fill="none" stroke="#ffb020" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`
-    + (max > 1 || hours[pk].orders ? `<circle cx="${pts[pk][0].toFixed(1)}" cy="${pts[pk][1].toFixed(1)}" r="4.5" fill="#4c8dff"/><text x="${pts[pk][0].toFixed(1)}" y="${(pts[pk][1] - 9).toFixed(1)}" font-size="10" font-weight="700" fill="#e9ecf1" text-anchor="middle">${hours[pk].orders}</text>` : '') + labels + '</svg>');
+  return svg(`<svg viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Orders per hour over the last seven days" style="display:block"><defs><linearGradient id="ga" x1="0" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--acc)" stop-opacity=".35"/><stop offset="1" style="stop-color:var(--acc)" stop-opacity="0"/></linearGradient></defs>`
+    + `<path d="${line} L${pts.at(-1)[0].toFixed(1)} ${H - 26} L14 ${H - 26}Z" fill="url(#ga)"/><path d="${line}" fill="none" style="stroke:var(--acc)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>`
+    + (max > 1 || hours[pk].orders ? `<circle cx="${pts[pk][0].toFixed(1)}" cy="${pts[pk][1].toFixed(1)}" r="4.5" style="fill:var(--acc)"/><text x="${pts[pk][0].toFixed(1)}" y="${(pts[pk][1] - 9).toFixed(1)}" font-size="10" font-weight="700" fill="#e9ecf1" text-anchor="middle">${hours[pk].orders}</text>` : '') + labels + '</svg>');
 }
 const mins = (s) => (s === null ? '–' : Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
 const stars = (n) => '★'.repeat(n) + '☆'.repeat(5 - n);

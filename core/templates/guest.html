@@ -10,8 +10,18 @@
 {{ logo_url|json_script:"logo-data" }}
 {% endblock %}
 {% block script %}
+{% load static %}<script src="{% static 'core/ur.js' %}"></script>
 <script>
 const $ = (s) => document.querySelector(s);
+// Guest language: English or Urdu (right to left). Remembered on this phone only.
+let LANG = (() => { try { return localStorage.getItem('lang') || (navigator.language || '').slice(0, 2); } catch (e) { return 'en'; } })() === 'ur' ? 'ur' : 'en';
+const t = (s, v) => { let out = (LANG === 'ur' && UR[s]) || s; if (v) for (const k in v) out = out.split('{' + k + '}').join(v[k]); return out; };
+function applyLang() {
+  document.documentElement.lang = LANG; document.documentElement.dir = LANG === 'ur' ? 'rtl' : 'ltr';
+  if (LANG === 'ur' && !document.getElementById('urfont')) document.head.append(h('link', { id: 'urfont', rel: 'stylesheet', href: 'https://fonts.googleapis.com/css2?family=Noto+Nastaliq+Urdu:wght@400;600;700&display=swap' }));
+}
+function setLang(l) { LANG = l; try { localStorage.setItem('lang', l); } catch (e) { /* private mode */ } applyLang(); S.anim = true; render(); }
+applyLang();
 const MENU = JSON.parse($('#menu-data').textContent), CODE = JSON.parse($('#code-data').textContent);
 const LOGO = JSON.parse($('#logo-data').textContent);
 const RNAME = JSON.parse($('#rname-data').textContent), TNUM = JSON.parse($('#tnum-data').textContent);
@@ -23,6 +33,7 @@ const isOut = (id) => OUT.has(id);
 const SPICE = { Mild: 1, Medium: 2, Hot: 3 };
 const STEPS = ['placed', 'cooking', 'ready', 'served'];
 const METHODS = [['cash', 'Cash', 'cash'], ['bank', 'Bank transfer', 'bank'], ['card', 'Card', 'card'], ['apple', 'Apple Pay', 'phone'], ['google', 'Google Pay', 'phone']];
+const methodName = (code, fallback) => (METHODS.find((m) => m[0] === code) || [0, fallback])[1];
 const url = (p) => `/t/${CODE}/${p}`;
 const root = $('#app');
 const S = {
@@ -35,7 +46,7 @@ const initials = (n) => n.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpp
 const lowest = (d) => (d.sizes.length ? Math.min(...d.sizes.map((s) => +s.price)) : +d.price);
 const sizeOf = (l) => (l.size ? byId[l.id].sizes.find((s) => String(s.id) === String(l.size)) : null);
 const unit = (l) => (l.deal ? +l.deal.price : sizeOf(l) ? +sizeOf(l).price : +byId[l.id].price);
-const sizeLabel = (l) => (l.deal ? 'Deal price' : sizeOf(l) ? sizeOf(l).label : '');
+const sizeLabel = (l) => (l.deal ? t('Deal price') : sizeOf(l) ? sizeOf(l).label : '');
 const count = () => S.cart.reduce((n, l) => n + l.qty, 0);
 const sub = () => S.cart.reduce((t, l) => t + unit(l) * l.qty, 0);
 const A = (extra) => (S.anim ? 'rise ' : '') + (extra || '');
@@ -60,60 +71,62 @@ function changeQty(l, by) {
   });
   S.cart = S.cart.filter((x) => x.qty > 0);
 }
-function quick(d) { if (isOut(d.id)) return toast(d.name + ' is sold out', true); addLine(d, d.sizes.length ? d.sizes[0].id : '', 1); toast(d.name + ' added'); render(); }
-function openDish(d) { if (isOut(d.id)) return toast(d.name + ' is sold out', true); S.sheet = { d, size: d.sizes.length ? d.sizes[0].id : '', qty: 1 }; S.sheetIn = true; render(); }
+function quick(d) { if (isOut(d.id)) return toast(t('{name} is sold out', { name: d.name }), true); addLine(d, d.sizes.length ? d.sizes[0].id : '', 1); toast(t('{name} added', { name: d.name })); render(); }
+function openDish(d) { if (isOut(d.id)) return toast(t('{name} is sold out', { name: d.name }), true); S.sheet = { d, size: d.sizes.length ? d.sizes[0].id : '', qty: 1 }; S.sheetIn = true; render(); }
 const leftOf = (o) => (o.endsAt ? Math.max(0, Math.round((o.endsAt - Date.now()) / 1000)) : null);
 const live_orders = () => S.orders.filter((o) => o.status !== 'served');
 const focusStatus = () => live_orders().find((o) => o.status === 'cooking') || live_orders()[0] || S.orders[0];
-const statusWord = () => { const o = focusStatus(); return { placed: 'Placed', cooking: 'Cooking', ready: 'Ready', served: 'Served' }[o.status] || o.label; };
-const copyText = async (t) => { try { await navigator.clipboard.writeText(t); toast('Copied'); } catch (e) { toast('Select and copy it by hand', true); } };
+const STATUS = { placed: 'Placed', cooking: 'Cooking', ready: 'Ready', served: 'Served' };
+const statusWord = () => { const o = focusStatus(); return t(STATUS[o.status] || o.label); };
+const copyText = async (text) => { try { await navigator.clipboard.writeText(text); toast(t('Copied')); } catch (e) { toast(t('Select and copy it by hand'), true); } };
 
 /* ---------- pieces ---------- */
 function topbar() {
   return h('div', { class: 'row', style: 'padding:24px 18px 6px;gap:12px;flex:none' },
     LOGO ? h('img', { class: 'logo', src: LOGO, alt: '', style: 'object-fit:cover' }) : h('div', { class: 'logo' }, initials(RNAME)),
     h('div', { class: 'grow' }, h('div', { class: 'bb', style: 'font-size:16px;line-height:1.1' }, RNAME),
-      h('div', { class: 'muted sm' }, 'Table ' + TNUM + ' · ' + (S.guests.length ? S.guests.join(', ') : 'Dine-in'))),
+      h('div', { class: 'muted sm' }, t('Table {n}', { n: TNUM }) + ' · ' + (S.guests.length ? S.guests.join(t(', ')) : t('Dine-in')))),
     S.orders.length ? h('button', { class: 'chip on sm', onclick: () => go('status') }, h('span', { class: 'livedot', style: 'width:8px;height:8px' }), statusWord()) : null,
-    h('button', { class: 'iconbtn glass', 'aria-label': 'Call the waiter', onclick: () => go('call') }, icon('bell', 22, 1.9)));
+    h('button', { class: 'chip sm', 'aria-label': LANG === 'ur' ? 'Switch to English' : 'اردو میں دیکھیں', lang: LANG === 'ur' ? 'en' : 'ur', onclick: () => setLang(LANG === 'ur' ? 'en' : 'ur') }, LANG === 'ur' ? 'EN' : 'اردو'),
+    h('button', { class: 'iconbtn glass', 'aria-label': t('Call the waiter'), onclick: () => go('call') }, icon('bell', 22, 1.9)));
 }
 function backbar(title, to, extra) {
   return h('div', { class: 'row', style: 'padding:58px 18px 12px;gap:12px;flex:none' },
-    h('button', { class: 'back', 'aria-label': 'Back', onclick: () => go(to) }, icon('back')),
+    h('button', { class: 'back', 'aria-label': t('Back'), onclick: () => go(to) }, icon('back')),
     h('h1', { class: 'd grow', style: 'font-size:32px;font-weight:700' }, title), extra);
 }
-const priceLine = (d) => h('span', { class: 'col', style: 'gap:0;padding-right:48px' },
-  h('span', { class: 'muted sm', style: 'min-height:16px' }, d.sizes.length ? 'from' : ''),
+const priceLine = (d) => h('span', { class: 'col', style: 'gap:0;padding-inline-end:48px' },
+  h('span', { class: 'muted sm', style: 'min-height:16px' }, d.sizes.length ? t('from') : ''),
   h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h);white-space:nowrap' }, money(CUR, lowest(d))));
 function gridCard(d, i) {
   if (isOut(d.id)) return h('div', { class: A('gcard out'), style: `--i:${i}` },
     h('div', { class: 'pslot' }, plate(d.art, d.name, 116)),
-    h('div', { class: 'gmain' }, h('span', { class: 'bb', style: 'font-size:15px;line-height:1.2' }, d.name), h('span', { class: 'tag hot', style: 'align-self:flex-start' }, 'Sold out')));
+    h('div', { class: 'gmain' }, h('span', { class: 'bb', style: 'font-size:15px;line-height:1.2' }, d.name), h('span', { class: 'tag hot', style: 'align-self:flex-start' }, t('Sold out'))));
   return h('div', { class: A('gcard'), style: `--i:${i}` },
     h('div', { class: 'pslot' }, plate(d.art, d.name, 116)),
     h('button', { class: 'gmain', onclick: () => openDish(d) },
       h('span', { class: 'bb', style: 'font-size:15px;line-height:1.2' }, d.name),
       h('span', { class: 'muted sm', style: 'min-height:34px' }, d.description), priceLine(d)),
-    h('button', { class: 'plus', 'aria-label': 'Add ' + d.name, onclick: () => quick(d) }, icon('plus', 20, 2.6)));
+    h('button', { class: 'plus', 'aria-label': t('Add {name}', { name: d.name }), onclick: () => quick(d) }, icon('plus', 20, 2.6)));
 }
 function pickCard(d) {
   return h('div', { class: A('pick'), style: '--i:1' },
     h('div', { class: 'pslot floaty' }, plate(d.art, d.name, 170)),
     h('div', { class: 'col', style: 'gap:6px;max-width:160px' },
-      h('span', { class: 'tag', style: 'align-self:flex-start;background:rgba(255,255,255,.22);color:#fff' }, "Chef's pick"),
+      h('span', { class: 'tag', style: 'align-self:flex-start;background:rgba(255,255,255,.22);color:#fff' }, t("Chef's pick")),
       h('h2', { class: 'd', style: 'font-size:27px;line-height:1.02;font-weight:700' }, d.name),
-      h('span', { style: 'color:var(--muted)' }, (d.sizes.length ? 'from ' : '') + money(CUR, lowest(d))),
-      h('button', { class: 'btn sm', style: 'align-self:flex-start;margin-top:6px;background:var(--acc);color:#fff;box-shadow:none', onclick: () => openDish(d) }, 'Order now')));
+      h('span', { style: 'color:var(--muted)' }, (d.sizes.length ? t('from') + ' ' : '') + money(CUR, lowest(d))),
+      h('button', { class: 'btn sm', style: 'align-self:flex-start;margin-top:6px;background:var(--acc);color:#fff;box-shadow:none', onclick: () => openDish(d) }, t('Order now'))));
 }
 function floatbar() {
   if (!count()) return null;
   return h('div', { class: 'floatbar' },
-    h('span', { class: 'col', style: 'gap:0' }, h('span', { class: 'sm muted' }, count() + (count() === 1 ? ' item' : ' items')), h('span', { class: 'd', style: 'font-size:23px;font-weight:700' }, money(CUR, sub()))),
-    h('button', { class: 'btn', onclick: () => go('cart') }, 'View order'));
+    h('span', { class: 'col', style: 'gap:0' }, h('span', { class: 'sm muted' }, t(count() === 1 ? '{n} item' : '{n} items', { n: count() })), h('span', { class: 'd', style: 'font-size:23px;font-weight:700' }, money(CUR, sub()))),
+    h('button', { class: 'btn', onclick: () => go('cart') }, t('View order')));
 }
 function shell(inner) {
   const inn = S.sheetIn ? ' in' : '';
-  return [h('button', { class: 'shade' + inn, 'aria-label': 'Close', onclick: () => { S.sheet = null; S.askName = false; render(); } }), h('div', { class: 'sheet' + inn }, h('div', { class: 'grab' }), inner)];
+  return [h('button', { class: 'shade' + inn, 'aria-label': t('Close'), onclick: () => { S.sheet = null; S.askName = false; render(); } }), h('div', { class: 'sheet' + inn }, h('div', { class: 'grab' }), inner)];
 }
 function sheet() {
   if (!S.sheet) return null;
@@ -125,28 +138,28 @@ function sheet() {
       h('div', { class: 'floaty', style: 'position:relative' }, plate(d.art, d.name, 200))),
     h('div', { class: 'spread', style: 'align-items:flex-start' },
       h('h2', { class: 'd', style: 'font-size:31px;line-height:1.02;font-weight:700' }, d.name),
-      SPICE[d.spice] ? h('span', { class: 'flames', 'aria-label': d.spice + ' spice' }, [1, 2, 3].map((n) => h('span', { class: n <= SPICE[d.spice] ? 'on' : '' }, flame()))) : null),
+      SPICE[d.spice] ? h('span', { class: 'flames', 'aria-label': t(d.spice + ' spice') }, [1, 2, 3].map((n) => h('span', { class: n <= SPICE[d.spice] ? 'on' : '' }, flame()))) : null),
     h('p', { class: 'muted' }, d.description),
-    h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, SPICE[d.spice] ? h('span', { class: 'tag' + (d.spice === 'Hot' ? ' hot' : '') }, d.spice + ' spice') : null, d.allergens.map((a) => h('span', { class: 'tag al' }, 'Contains ' + a))),
+    h('div', { class: 'row', style: 'gap:6px;flex-wrap:wrap' }, SPICE[d.spice] ? h('span', { class: 'tag' + (d.spice === 'Hot' ? ' hot' : '') }, t(d.spice + ' spice')) : null, d.allergens.map((a) => h('span', { class: 'tag al' }, t('Contains {a}', { a: t(a) })))),
     d.sizes.length ? h('div', { class: 'seg' }, d.sizes.map((s) => h('button', { class: String(S.sheet.size) === String(s.id) ? 'on' : '', onclick: () => { S.sheet.size = s.id; render(); } }, s.label + ' · ' + money(CUR, s.price)))) : null,
     d.deals.filter((e) => !isOut(e.partner_id)).map((e) => h('div', { class: 'col', style: 'padding:14px;border-radius:14px;gap:6px;background:var(--acc-s);border:1px solid rgba(76,141,255,.4);color:var(--fg)' },
-      h('span', { class: 'bb' }, 'Deal'),
+      h('span', { class: 'bb' }, t('Deal')),
       h('div', { class: 'row', style: 'gap:12px' }, plate(e.art, e.partner, 48, 'flat'), h('span', { class: 'grow bb' }, '+ ' + e.partner, h('span', { style: 'display:block;font-weight:500' }, h('b', {}, money(CUR, e.price)), ' ', h('s', {}, money(CUR, e.normal)))),
-        h('button', { class: 'btn sm', style: 'background:var(--acc);color:#fff;box-shadow:none', onclick: () => { addDeal(d, e); S.sheet = null; toast('Deal added'); render(); } }, 'Add deal')))),
-    pairs.length ? h('div', { class: 'card flat', style: 'gap:12px;padding:14px' }, h('span', { class: 'bb' }, 'Goes well with'),
-      pairs.map((x) => h('div', { class: 'row', style: 'gap:12px' }, plate(x.art, x.name, 46, 'flat'), h('span', { class: 'grow' }, x.name + ' ', h('span', { class: 'muted' }, '+' + money(CUR, x.price))), h('button', { class: 'btn ghost sm', onclick: () => { addLine(x, '', 1); toast(x.name + ' added'); render(); } }, 'Add')))) : null,
+        h('button', { class: 'btn sm', style: 'background:var(--acc);color:#fff;box-shadow:none', onclick: () => { addDeal(d, e); S.sheet = null; toast(t('Deal added')); render(); } }, t('Add deal'))))),
+    pairs.length ? h('div', { class: 'card flat', style: 'gap:12px;padding:14px' }, h('span', { class: 'bb' }, t('Goes well with')),
+      pairs.map((x) => h('div', { class: 'row', style: 'gap:12px' }, plate(x.art, x.name, 46, 'flat'), h('span', { class: 'grow' }, x.name + ' ', h('span', { class: 'muted' }, '+' + money(CUR, x.price))), h('button', { class: 'btn ghost sm', onclick: () => { addLine(x, '', 1); toast(t('{name} added', { name: x.name })); render(); } }, t('Add'))))) : null,
     h('div', { class: 'row', style: 'gap:12px' },
-      h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { S.sheet.qty = Math.max(1, S.sheet.qty - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, S.sheet.qty), h('button', { 'aria-label': 'More', onclick: () => { S.sheet.qty += 1; render(); } }, icon('plus', 16, 2.4))),
-      h('button', { class: 'btn grow', onclick: () => { addLine(d, S.sheet.size, S.sheet.qty); S.sheet = null; toast(d.name + ' added'); render(); } }, 'Add to order · ' + money(CUR, price * S.sheet.qty))),
+      h('div', { class: 'qty' }, h('button', { 'aria-label': t('Fewer'), onclick: () => { S.sheet.qty = Math.max(1, S.sheet.qty - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, S.sheet.qty), h('button', { 'aria-label': t('More'), onclick: () => { S.sheet.qty += 1; render(); } }, icon('plus', 16, 2.4))),
+      h('button', { class: 'btn grow', onclick: () => { addLine(d, S.sheet.size, S.sheet.qty); S.sheet = null; toast(t('{name} added', { name: d.name })); render(); } }, t('Add to order') + ' · ' + money(CUR, price * S.sheet.qty))),
   ]);
 }
 function nameSheet() {
   if (!S.askName) return null;
   return shell([
-    h('h2', { class: 'd', style: 'font-size:30px;font-weight:700' }, 'Who is ', h('span', { class: 'gold' }, 'ordering'), '?'),
-    h('p', { class: 'muted' }, 'Tell us your name so the bill, the games and your points know who you are. Everyone at the table does the same on their own phone.'),
-    h('input', { id: 'name-in', placeholder: 'Your name', maxlength: 40, autocomplete: 'given-name', 'aria-label': 'Your name', onkeydown: (e) => { if (e.key === 'Enter') join(); } }),
-    h('button', { class: 'btn wide', onclick: join }, 'Start'),
+    h('h2', { class: 'd', style: 'font-size:30px;font-weight:700' }, t('Who is'), ' ', h('span', { class: 'gold' }, t('ordering')), t('?')),
+    h('p', { class: 'muted' }, t('Tell us your name so the bill, the games and your points know who you are. Everyone at the table does the same on their own phone.')),
+    h('input', { id: 'name-in', placeholder: t('Your name'), maxlength: 40, autocomplete: 'given-name', 'aria-label': t('Your name'), onkeydown: (e) => { if (e.key === 'Enter') join(); } }),
+    h('button', { class: 'btn wide', onclick: join }, t('Start')),
   ]);
 }
 async function join() {
@@ -164,11 +177,11 @@ function menuView() {
   const cats = ['All', ...MENU.categories.map((c) => c.name)];
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, topbar(),
     h('div', { class: 'scroll', style: 'padding:8px 18px 130px' },
-      h('h1', { class: A('d'), style: 'font-size:36px;line-height:1.02;font-weight:700;padding:10px 0 ' + (pick ? '38px' : '18px') }, 'What are you ', h('span', { class: 'gold' }, 'craving'), ' tonight?'),
+      h('h1', { class: A('d'), style: 'font-size:36px;line-height:1.02;font-weight:700;padding:10px 0 ' + (pick ? '38px' : '18px') }, t('What are you'), ' ', h('span', { class: 'gold' }, t('craving')), ' ', t('tonight?')),
       pick ? pickCard(pick) : null,
-      h('div', { class: 'row', style: 'padding:22px 0 8px;gap:8px;overflow-x:auto;scrollbar-width:none' }, cats.map((c) => h('button', { class: 'chip' + (S.cat === c ? ' on' : ''), onclick: () => { S.cat = c; render(); } }, c))),
-      allergens.length ? h('div', { class: 'row', style: 'padding:4px 0 6px;gap:8px;flex-wrap:wrap' }, h('span', { class: 'muted sm b' }, 'Avoid'), allergens.map((a) => h('button', { class: 'chip sm' + (S.avoid[a] ? ' on' : ''), onclick: () => { S.avoid[a] = !S.avoid[a]; render(); } }, a))) : null,
-      hidden ? h('div', { class: 'sm muted b' }, hidden + ' dishes hidden for what you avoid') : null,
+      h('div', { class: 'row', style: 'padding:22px 0 8px;gap:8px;overflow-x:auto;scrollbar-width:none' }, cats.map((c) => h('button', { class: 'chip' + (S.cat === c ? ' on' : ''), onclick: () => { S.cat = c; render(); } }, c === 'All' ? t('All') : c))),
+      allergens.length ? h('div', { class: 'row', style: 'padding:4px 0 6px;gap:8px;flex-wrap:wrap' }, h('span', { class: 'muted sm b' }, t('Avoid')), allergens.map((a) => h('button', { class: 'chip sm' + (S.avoid[a] ? ' on' : ''), onclick: () => { S.avoid[a] = !S.avoid[a]; render(); } }, t(a)))) : null,
+      hidden ? h('div', { class: 'sm muted b' }, t('{n} dishes hidden for what you avoid', { n: hidden })) : null,
       h('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px' }, vis.map((d, i) => gridCard(d, i)))),
     floatbar(), sheet());
 }
@@ -178,18 +191,18 @@ function cartView() {
     return h('div', { class: A('card'), style: `--i:${i};flex-direction:row;gap:14px;align-items:center;padding:12px` },
       plate(d.art, d.name, 64),
       h('div', { class: 'col grow', style: 'gap:8px' },
-        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name, l.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null, isOut(d.id) ? h('span', { class: 'tag hot', style: 'margin-left:6px' }, 'Sold out') : null), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h)' }, money(CUR, unit(l) * l.qty))),
+        h('div', { class: 'spread' }, h('div', {}, h('div', { class: 'bb', style: 'font-size:15px' }, d.name, l.deal ? h('span', { class: 'tag al', style: 'margin-inline-start:6px' }, t('Deal')) : null, isOut(d.id) ? h('span', { class: 'tag hot', style: 'margin-inline-start:6px' }, t('Sold out')) : null), h('div', { class: 'muted sm' }, sizeLabel(l))), h('span', { class: 'd num', style: 'font-size:18px;font-weight:700;color:var(--acc-h)' }, money(CUR, unit(l) * l.qty))),
         h('div', { class: 'spread' },
-          h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer', onclick: () => { changeQty(l, -1); render(); } }, icon('minus', 14, 2.6)), h('span', {}, l.qty), h('button', { 'aria-label': 'More', onclick: () => { changeQty(l, 1); render(); } }, icon('plus', 14, 2.6))),
-          h('input', { id: 'note-' + i, style: 'width:120px;padding:8px 10px;font-size:12px', 'aria-label': 'Note for the kitchen', placeholder: 'Add a note', value: l.note, maxlength: 140, oninput: (e) => { l.note = e.target.value; } }))));
+          h('div', { class: 'qty' }, h('button', { 'aria-label': t('Fewer'), onclick: () => { changeQty(l, -1); render(); } }, icon('minus', 14, 2.6)), h('span', {}, l.qty), h('button', { 'aria-label': t('More'), onclick: () => { changeQty(l, 1); render(); } }, icon('plus', 14, 2.6))),
+          h('input', { id: 'note-' + i, style: 'width:120px;padding:8px 10px;font-size:12px', 'aria-label': t('Note for the kitchen'), placeholder: t('Add a note'), value: l.note, maxlength: 140, oninput: (e) => { l.note = e.target.value; } }))));
   });
-  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your order', 'menu', h('span', { class: 'pill' }, 'Table ' + TNUM)),
-    h('div', { class: 'scroll col', style: 'padding:10px 18px 12px;gap:12px' }, lines.length ? lines : h('div', { class: 'empty' }, 'Your cart is empty.'), h('button', { class: 'btn ghost wide', onclick: () => go('menu') }, '+ Add more dishes')),
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('Your order'), 'menu', h('span', { class: 'pill' }, t('Table {n}', { n: TNUM }))),
+    h('div', { class: 'scroll col', style: 'padding:10px 18px 12px;gap:12px' }, lines.length ? lines : h('div', { class: 'empty' }, t('Your cart is empty.')), h('button', { class: 'btn ghost wide', onclick: () => go('menu') }, t('+ Add more dishes'))),
     h('div', { class: 'col', style: 'padding:18px 20px 30px;gap:12px;background:var(--s1);border-radius:18px 18px 0 0;border-top:1px solid var(--line);box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
-      h('div', { class: 'spread' }, h('span', { class: 'muted' }, 'Subtotal'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700' }, money(CUR, sub()))),
-      h('p', { class: 'muted sm' }, 'The restaurant confirms your final price. Service charge and tax are added to your bill.'),
-      S.cart.some((l) => isOut(l.id)) ? h('p', { class: 'sm', style: 'color:#ff8f87;font-weight:600' }, 'Remove the sold-out dishes to place your order.') : null,
-      h('button', { class: 'btn wide', disabled: !S.cart.length || S.cart.some((l) => isOut(l.id)), onclick: place }, 'Place order')));
+      h('div', { class: 'spread' }, h('span', { class: 'muted' }, t('Subtotal')), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700' }, money(CUR, sub()))),
+      h('p', { class: 'muted sm' }, t('The restaurant confirms your final price. Service charge and tax are added to your bill.')),
+      S.cart.some((l) => isOut(l.id)) ? h('p', { class: 'sm', style: 'color:#ff8f87;font-weight:600' }, t('Remove the sold-out dishes to place your order.')) : null,
+      h('button', { class: 'btn wide', disabled: !S.cart.length || S.cart.some((l) => isOut(l.id)), onclick: place }, t('Place order'))));
 }
 async function place() {
   if (!S.guest) { S.askName = true; S.sheetIn = true; render(); return; }
@@ -203,9 +216,9 @@ function placedView() {
   return h('div', { class: 'screen scr', style: 'align-items:center;justify-content:center;gap:18px;padding:24px;text-align:center' },
     h('div', { class: 'pop', style: 'width:104px;height:104px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 12px rgba(76,141,255,.14),0 20px 44px rgba(76,141,255,.35);color:#fff' },
       svg('<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
-    h('h1', { class: 'd rise', style: '--i:2;font-size:40px;font-weight:700' }, 'Order ', h('span', { class: 'gold' }, 'placed')),
-    h('p', { class: 'muted rise', style: '--i:3' }, 'Table ' + TNUM + '. Your waiter has it.'),
-    h('button', { class: 'btn rise', style: '--i:4;min-width:220px', onclick: () => go('status') }, 'Track my order'));
+    h('h1', { class: 'd rise', style: '--i:2;font-size:40px;font-weight:700' }, t('Order'), ' ', h('span', { class: 'gold' }, t('placed'))),
+    h('p', { class: 'muted rise', style: '--i:3' }, t('Table {n}. Your waiter has it.', { n: TNUM })),
+    h('button', { class: 'btn rise', style: '--i:4;min-width:220px', onclick: () => go('status') }, t('Track my order')));
 }
 function ringCard(o) {
   const left = leftOf(o), est = Math.max(1, o.estimate), first = o.items[0];
@@ -214,87 +227,88 @@ function ringCard(o) {
       h('div', { style: 'position:relative;width:200px;height:200px' },
         svg(`<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><circle class="bg" cx="100" cy="100" r="74"/><circle class="fg" cx="100" cy="100" r="74" style="stroke-dashoffset:${(464.9 * (1 - left / est)).toFixed(1)}"/></svg>`),
         h('div', { class: 'spin', style: 'position:absolute;left:42px;top:42px' }, plate(first.art, first.name, 116))),
-      h('div', { class: 'col', style: 'align-items:center;gap:0' }, h('span', { class: 'd num', style: 'font-size:54px;font-weight:700;line-height:1' }, countdown(left)), h('span', { class: 'muted sm b' }, 'minutes left, about'))));
+      h('div', { class: 'col', style: 'align-items:center;gap:0' }, h('span', { class: 'd num', style: 'font-size:54px;font-weight:700;line-height:1' }, countdown(left)), h('span', { class: 'muted sm b' }, t('minutes left, about')))));
 }
 function orderCard(o, i) {
   const step = STEPS.indexOf(o.status);
-  const msg = { placed: 'Waiting for the waiter to confirm your order.', cooking: 'The kitchen is cooking it now.', ready: 'Your food is ready and on its way to you.', served: 'Enjoy your meal.' }[o.status];
+  const msg = t({ placed: 'Waiting for the waiter to confirm your order.', cooking: 'The kitchen is cooking it now.', ready: 'Your food is ready and on its way to you.', served: 'Enjoy your meal.' }[o.status] || '');
   return h('div', { class: A('card'), style: `--i:${i + 1};gap:12px` },
-    h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Order #' + o.id, o.guest ? h('span', { class: 'muted sm', style: 'margin-left:8px;font-weight:500' }, 'by ' + o.guest) : null), h('span', { class: 'st ' + (o.status === 'placed' ? 'ordering' : 'eating') }, o.label)),
-    h('div', { class: 'steps' }, STEPS.map((s, n) => h('div', { class: (n <= step ? 'on' : '') + (n === step && o.status !== 'served' ? ' now' : '') }, h('i'), s[0].toUpperCase() + s.slice(1)))),
+    h('div', { class: 'spread' }, h('span', { class: 'bb' }, t('Order #{n}', { n: o.id }), o.guest ? h('span', { class: 'muted sm', style: 'margin-inline-start:8px;font-weight:500' }, t('by {name}', { name: o.guest })) : null), h('span', { class: 'st ' + (o.status === 'placed' ? 'ordering' : 'eating') }, t(STATUS[o.status] || o.label))),
+    h('div', { class: 'steps' }, STEPS.map((s, n) => h('div', { class: (n <= step ? 'on' : '') + (n === step && o.status !== 'served' ? ' now' : '') }, h('i'), t(STATUS[s])))),
     h('p', { class: 'muted' }, msg),
-    h('ul', { class: 'col', style: 'gap:10px' }, o.items.map((it) => h('li', { class: 'row', style: 'gap:12px' }, plate(it.art, it.name, 34, 'flat'), h('span', { class: 'grow' }, it.qty + ' × ' + it.name + (it.size ? ' (' + it.size + ')' : ''), it.deal ? h('span', { class: 'tag al', style: 'margin-left:6px' }, 'Deal') : null, it.note ? h('span', { class: 'muted sm', style: 'display:block' }, 'Note: ' + it.note) : null)))),
-    h('div', { class: 'spread', style: 'border-top:1.5px dashed var(--line);padding-top:10px' }, h('span', { class: 'muted' }, 'Total'), h('span', { class: 'd num bb', style: 'font-size:20px' }, money(CUR, o.total))),
+    h('ul', { class: 'col', style: 'gap:10px' }, o.items.map((it) => h('li', { class: 'row', style: 'gap:12px' }, plate(it.art, it.name, 34, 'flat'), h('span', { class: 'grow' }, it.qty + ' × ' + it.name + (it.size ? ' (' + it.size + ')' : ''), it.deal ? h('span', { class: 'tag al', style: 'margin-inline-start:6px' }, t('Deal')) : null, it.note ? h('span', { class: 'muted sm', style: 'display:block' }, t('Note: {note}', { note: it.note })) : null)))),
+    h('div', { class: 'spread', style: 'border-top:1.5px dashed var(--line);padding-top:10px' }, h('span', { class: 'muted' }, t('Total')), h('span', { class: 'd num bb', style: 'font-size:20px' }, money(CUR, o.total))),
     o.status === 'placed' && S.guest && o.guest_id === S.guest.id ? h('button', { class: 'btn red sm', style: 'align-self:flex-start',
-      onclick: () => { if (confirm('Cancel this order? You can order again from the menu.')) act(() => api(url('orders/' + o.id + '/cancel/'), {}).then(() => toast('Order cancelled')), refreshState); } }, 'Cancel this order') : null);
+      onclick: () => { if (confirm(t('Cancel this order? You can order again from the menu.'))) act(() => api(url('orders/' + o.id + '/cancel/'), {}).then(() => toast(t('Order cancelled'))), refreshState); } }, t('Cancel this order')) : null);
 }
 function hubTile(ic, label, sub, to) {
   return h('button', { class: 'card', style: 'align-items:center;gap:4px;padding:16px 6px;text-align:center', onclick: () => go(to) }, icon(ic, 28, 1.8), h('span', { class: 'bb' }, label), h('span', { class: 'muted sm' }, sub));
 }
 function statusView() {
   const o = focusStatus();
-  const title = !o ? ['Nothing ordered yet'] : o.status === 'served' ? ['Enjoy your ', h('span', { class: 'gold' }, 'meal')] : o.status === 'ready' ? ['Your food is ', h('span', { class: 'gold' }, 'ready')] : o.status === 'cooking' ? ['Your food is ', h('span', { class: 'gold' }, 'cooking')] : ['Order ', h('span', { class: 'gold' }, 'received')];
+  const pair = (a, b) => [t(a), ' ', h('span', { class: 'gold' }, t(b))];
+  const title = !o ? [t('Nothing ordered yet')] : o.status === 'served' ? pair('Enjoy your', 'meal') : o.status === 'ready' ? pair('Your food is', 'ready') : o.status === 'cooking' ? pair('Your food is', 'cooking') : pair('Order', 'received');
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') },
     h('div', { class: 'hero', style: 'padding:58px 20px 22px;flex:none' }, h('div', { class: 'row', style: 'position:relative;z-index:1;gap:12px' },
-      h('button', { class: 'iconbtn glass', 'aria-label': 'Back to the menu', onclick: () => go('menu') }, icon('back')),
-      h('div', { class: 'grow' }, h('div', { class: 'sm muted' }, 'Table ' + TNUM + ' · ' + RNAME), h('h1', { class: 'd', style: 'font-size:30px;font-weight:700;line-height:1.05' }, title)))),
+      h('button', { class: 'iconbtn glass', 'aria-label': t('Back to the menu'), onclick: () => go('menu') }, icon('back')),
+      h('div', { class: 'grow' }, h('div', { class: 'sm muted' }, t('Table {n}', { n: TNUM }) + ' · ' + RNAME), h('h1', { class: 'd', style: 'font-size:30px;font-weight:700;line-height:1.05' }, title)))),
     h('div', { class: 'scroll col', style: 'padding:4px 18px 22px;gap:14px' },
       o && o.status === 'cooking' && o.endsAt ? ringCard(o) : null,
-      S.orders.length ? h('div', { class: 'col', style: 'gap:8px' }, h('span', { class: 'bb', style: 'font-size:18px' }, 'While you wait'),
+      S.orders.length ? h('div', { class: 'col', style: 'gap:8px' }, h('span', { class: 'bb', style: 'font-size:18px' }, t('While you wait')),
         h('div', { style: 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px' },
-          S.wifi ? hubTile('wifi', 'WiFi', 'Connect', 'wifi') : null,
-          hubTile('gift', 'Rewards', S.reward ? S.reward.points + ' pts' : 'Earn', 'rewards'),
-          hubTile('game', 'Games', 'Spice quiz', 'quiz'))) : null,
-      S.orders.length ? S.orders.map(orderCard) : h('div', { class: 'empty' }, 'Order something and follow it here.'),
-      h('div', { class: 'row', style: 'gap:10px' }, h('button', { class: 'btn ghost grow', onclick: () => go('menu') }, '+ Add items'), h('button', { class: 'btn dark grow', onclick: () => go('call') }, 'Call waiter')),
-      S.bill ? h('button', { class: 'btn wide', onclick: () => go('bill') }, 'Show the bill') : null));
+          S.wifi ? hubTile('wifi', t('WiFi'), t('Connect'), 'wifi') : null,
+          hubTile('gift', t('Rewards'), S.reward ? t('{n} pts', { n: S.reward.points }) : t('Earn'), 'rewards'),
+          hubTile('game', t('Games'), t('Spice quiz'), 'quiz'))) : null,
+      S.orders.length ? S.orders.map(orderCard) : h('div', { class: 'empty' }, t('Order something and follow it here.')),
+      h('div', { class: 'row', style: 'gap:10px' }, h('button', { class: 'btn ghost grow', onclick: () => go('menu') }, t('+ Add items')), h('button', { class: 'btn dark grow', onclick: () => go('call') }, t('Call waiter'))),
+      S.bill ? h('button', { class: 'btn wide', onclick: () => go('bill') }, t('Show the bill')) : null));
 }
 function wifiView() {
   const w = S.wifi || { name: '', password: '' };
-  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('WiFi', 'status'),
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('WiFi'), 'status'),
     h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' },
       h('div', { class: A('card'), style: 'align-items:center;padding:28px 18px;gap:14px;text-align:center;box-shadow:var(--shadow-m)' },
         h('div', { class: 'floaty', style: 'color:var(--acc-h)' }, icon('wifi', 64, 1.6)),
-        h('span', { class: 'muted sm b' }, 'Network'), h('span', { class: 'd', style: 'font-size:28px;font-weight:700' }, w.name),
-        h('span', { class: 'muted sm b' }, 'Password'), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700;color:var(--acc-h)' }, w.password || 'No password'),
-        w.password ? h('button', { class: 'btn', onclick: () => copyText(w.password) }, icon('copy', 18), 'Copy the password') : null),
-      h('p', { class: 'muted' }, 'Open your phone\'s WiFi settings, pick this network and paste the password.')));
+        h('span', { class: 'muted sm b' }, t('Network')), h('span', { class: 'd', style: 'font-size:28px;font-weight:700' }, w.name),
+        h('span', { class: 'muted sm b' }, t('Password')), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700;color:var(--acc-h)' }, w.password || t('No password')),
+        w.password ? h('button', { class: 'btn', onclick: () => copyText(w.password) }, icon('copy', 18), t('Copy the password')) : null),
+      h('p', { class: 'muted' }, t("Open your phone's WiFi settings, pick this network and paste the password."))));
 }
 function rewardsView() {
   const r = S.reward || { points: 0, goal: 200, text: 'a reward', email: '' }, earn = S.bill ? S.bill.earn : 0;
   const pct = Math.min(1, r.points / Math.max(1, r.goal));
-  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Rewards', 'status'),
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('Rewards'), 'status'),
     h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' },
-      h('h2', { class: A('d'), style: 'font-size:34px;font-weight:700;line-height:1.05' }, 'Every meal ', h('span', { class: 'gold' }, 'earns points')),
+      h('h2', { class: A('d'), style: 'font-size:34px;font-weight:700;line-height:1.05' }, t('Every meal'), ' ', h('span', { class: 'gold' }, t('earns points'))),
       h('div', { class: A('card'), style: '--i:1;align-items:center;padding:24px 18px;gap:14px;box-shadow:var(--shadow-m)' },
         h('div', { style: 'position:relative;width:200px;height:200px' },
           svg(`<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><circle class="bg" cx="100" cy="100" r="74"/><circle class="fg" cx="100" cy="100" r="74" style="stroke-dashoffset:${(464.9 * (1 - pct)).toFixed(1)}"/></svg>`),
-          h('div', { style: 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center' }, h('span', { class: 'd num', style: 'font-size:48px;font-weight:700;line-height:1' }, r.points), h('span', { class: 'muted sm b' }, 'POINTS'))),
-        earn ? h('span', { class: 'tag al', style: 'font-size:13px' }, '+' + earn + ' points when you pay this bill') : null,
-        h('span', { class: 'muted' }, r.text + ' at ' + r.goal + ' points')),
-      r.email ? h('div', { class: 'card flat' }, h('span', { class: 'bb' }, 'You are in'), h('span', { class: 'muted' }, 'Your points are saved to ' + r.email + '. Use the same email next time.'))
-        : h('div', { class: A('card'), style: '--i:2;gap:12px' }, h('span', { class: 'bb' }, 'Keep your points'), h('p', { class: 'muted' }, 'Add your email so the points stay yours for your next visit.'),
-          h('input', { id: 'member-in', type: 'email', placeholder: 'you@example.com', 'aria-label': 'Email', autocomplete: 'email' }),
-          h('button', { class: 'btn wide', onclick: () => act(async () => { await api(url('member/'), { email: ($('#member-in') || {}).value }); toast('Welcome to the rewards'); await refreshState(); }, null) }, 'Join rewards'))));
+          h('div', { style: 'position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center' }, h('span', { class: 'd num', style: 'font-size:48px;font-weight:700;line-height:1' }, r.points), h('span', { class: 'muted sm b' }, t('POINTS')))),
+        earn ? h('span', { class: 'tag al', style: 'font-size:13px' }, t('+{n} points when you pay this bill', { n: earn })) : null,
+        h('span', { class: 'muted' }, t('{reward} at {n} points', { reward: r.text, n: r.goal }))),
+      r.email ? h('div', { class: 'card flat' }, h('span', { class: 'bb' }, t('You are in')), h('span', { class: 'muted' }, t('Your points are saved to {email}. Use the same email next time.', { email: r.email })))
+        : h('div', { class: A('card'), style: '--i:2;gap:12px' }, h('span', { class: 'bb' }, t('Keep your points')), h('p', { class: 'muted' }, t('Add your email so the points stay yours for your next visit.')),
+          h('input', { id: 'member-in', type: 'email', placeholder: 'you@example.com', 'aria-label': t('Email'), autocomplete: 'email', dir: 'ltr' }),
+          h('button', { class: 'btn wide', onclick: () => act(async () => { await api(url('member/'), { email: ($('#member-in') || {}).value }); toast(t('Welcome to the rewards')); await refreshState(); }, null) }, t('Join rewards')))));
 }
 async function loadQuiz() { try { S.quiz = await api(url('quiz/')); } catch (e) { /* shown empty */ } }
 function quizView() {
   const q = S.quiz, board = q ? q.board : { tables: [], players: [] };
-  const body = !S.guest ? h('div', { class: 'card' }, h('p', { class: 'muted' }, 'Tell us your name first so your score counts.'), h('button', { class: 'btn', onclick: () => { S.askName = true; S.sheetIn = true; render(); } }, 'Add my name'))
-    : !q ? h('div', { class: 'empty' }, 'Loading…')
-    : !q.question && !S.qAns ? h('div', { class: A('card'), style: 'align-items:center;text-align:center;padding:24px' }, h('h3', { class: 'd', style: 'font-size:26px' }, 'You answered them all'), h('p', { class: 'muted' }, 'You scored ' + q.me + ' points. Watch the board for who is ahead.'))
+  const body = !S.guest ? h('div', { class: 'card' }, h('p', { class: 'muted' }, t('Tell us your name first so your score counts.')), h('button', { class: 'btn', onclick: () => { S.askName = true; S.sheetIn = true; render(); } }, t('Add my name')))
+    : !q ? h('div', { class: 'empty' }, t('Loading…'))
+    : !q.question && !S.qAns ? h('div', { class: A('card'), style: 'align-items:center;text-align:center;padding:24px' }, h('h3', { class: 'd', style: 'font-size:26px' }, t('You answered them all')), h('p', { class: 'muted' }, t('You scored {n} points. Watch the board for who is ahead.', { n: q.me })))
     : h('div', { class: 'col', style: 'gap:12px' }, h('div', { class: 'card', style: 'gap:14px;padding:18px' },
-      h('span', { class: 'muted sm b' }, 'Your score ' + q.me + ' pts'),
+      h('span', { class: 'muted sm b' }, t('Your score {n} pts', { n: q.me })),
       h('h3', { class: 'd', style: 'font-size:24px;line-height:1.15;font-weight:700' }, (S.qAns ? S.qAns.text : q.question.text)),
       h('div', { class: 'col', style: 'gap:8px' }, (S.qAns ? S.qAns.options : q.question.options).map((o, i) => {
         const cls = S.qAns ? (i === S.qAns.right ? ' on' : i === S.qAns.choice ? ' wrong' : '') : '';
         return h('button', { class: 'seg-btn' + cls, disabled: !!S.qAns, onclick: () => answerQuiz(i) }, o);
       }))));
-  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Spice Quiz', 'status'),
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('Spice Quiz'), 'status'),
     h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:14px' }, body,
-      h('div', { class: 'card' }, h('span', { class: 'bb' }, 'Table vs table · live'),
-        board.tables.length ? board.tables.map((t, i) => h('div', { class: 'spread' }, h('span', { class: 'row', style: 'gap:10px' }, h('span', { class: 'pill', style: 'min-width:28px;justify-content:center' }, i + 1), h('span', { class: t.table === TNUM ? 'bb' : '' }, 'Table ' + t.table + (t.table === TNUM ? ' (you)' : ''))), h('span', { class: 'num bb', style: 'color:var(--acc-h)' }, t.points + ' pts'))) : h('span', { class: 'muted' }, 'No scores yet. Be the first.')),
-      board.players.length ? h('div', { class: 'card' }, h('span', { class: 'bb' }, 'Players'), board.players.map((p) => h('div', { class: 'spread' }, h('span', { class: p.id === (S.guest && S.guest.id) ? 'bb' : '' }, p.name, h('span', { class: 'muted sm' }, ' · Table ' + p.table)), h('span', { class: 'num b' }, p.points + ' pts')))) : null));
+      h('div', { class: 'card' }, h('span', { class: 'bb' }, t('Table vs table · live')),
+        board.tables.length ? board.tables.map((x, i) => h('div', { class: 'spread' }, h('span', { class: 'row', style: 'gap:10px' }, h('span', { class: 'pill', style: 'min-width:28px;justify-content:center' }, i + 1), h('span', { class: x.table === TNUM ? 'bb' : '' }, t(x.table === TNUM ? 'Table {n} (you)' : 'Table {n}', { n: x.table }))), h('span', { class: 'num bb', style: 'color:var(--acc-h)' }, t('{n} pts', { n: x.points })))) : h('span', { class: 'muted' }, t('No scores yet. Be the first.'))),
+      board.players.length ? h('div', { class: 'card' }, h('span', { class: 'bb' }, t('Players')), board.players.map((p) => h('div', { class: 'spread' }, h('span', { class: p.id === (S.guest && S.guest.id) ? 'bb' : '' }, p.name, h('span', { class: 'muted sm' }, ' · ' + t('Table {n}', { n: p.table }))), h('span', { class: 'num b' }, t('{n} pts', { n: p.points }))))) : null));
 }
 async function answerQuiz(choice) {
   const q = S.quiz.question;
@@ -308,47 +322,47 @@ async function answerQuiz(choice) {
 const KINDS = [['water', 'Water', 'drop'], ['napkins', 'Napkins', 'napkin'], ['bill', 'Bill', 'receipt'], ['call', 'Call waiter', 'bell']];
 function callView() {
   const open = (k) => S.requests.find((r) => r.kind === k);
-  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Need something?', S.orders.length ? 'status' : 'menu'),
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('Need something?'), S.orders.length ? 'status' : 'menu'),
     h('div', { class: 'scroll col', style: 'padding:10px 18px 20px;gap:16px' },
       h('div', { style: 'display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px' }, KINDS.map(([k, label, ic], i) =>
-        h('button', { class: A('callopt') + (open(k) ? ' on' : ''), style: `--i:${i}`, onclick: () => act(async () => { await api(url('call/'), { kind: k }); toast(label + ' requested'); }, refreshState) }, icon(ic, 38, 1.7), label))),
+        h('button', { class: A('callopt') + (open(k) ? ' on' : ''), style: `--i:${i}`, onclick: () => act(async () => { await api(url('call/'), { kind: k }); toast(t('{what} requested', { what: t(label) })); }, refreshState) }, icon(ic, 38, 1.7), t(label)))),
       S.requests.map((r) => h('div', { class: 'card pop', style: 'gap:10px;padding:18px' },
-        h('div', { class: 'spread' }, h('span', { class: 'bb', style: 'font-size:16px' }, r.label), r.status === 'acknowledged' ? h('span', { class: 'st eating' }, 'On the way') : h('span', { class: 'st bill' }, 'Sent to staff')),
-        h('p', { class: 'muted' }, r.status === 'acknowledged' ? (r.assigned ? r.assigned + ' is coming to your table' : 'A waiter is coming to your table') + (r.response !== null ? '. They answered in ' + r.response + ' seconds.' : '.') : 'Your waiter has been alerted. We will tell you the moment someone picks it up.')))));
+        h('div', { class: 'spread' }, h('span', { class: 'bb', style: 'font-size:16px' }, t((KINDS.find((k) => k[0] === r.kind) || [0, r.label])[1])), r.status === 'acknowledged' ? h('span', { class: 'st eating' }, t('On the way')) : h('span', { class: 'st bill' }, t('Sent to staff'))),
+        h('p', { class: 'muted' }, r.status === 'acknowledged' ? (r.assigned ? t('{name} is coming to your table', { name: r.assigned }) : t('A waiter is coming to your table')) + (r.response !== null ? t('. They answered in {n} seconds.', { n: r.response }) : t('.')) : t('Your waiter has been alerted. We will tell you the moment someone picks it up.'))))));
 }
 
 /* ---------- bill and paying ---------- */
 function billView() {
   const b = S.bill;
-  if (!b) return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your bill', 'status'), h('div', { class: 'scroll col', style: 'padding:10px 18px' }, h('div', { class: 'empty' }, 'There is nothing to pay yet.')));
+  if (!b) return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('Your bill'), 'status'), h('div', { class: 'scroll col', style: 'padding:10px 18px' }, h('div', { class: 'empty' }, t('There is nothing to pay yet.'))));
   const mine = S.payments.find((p) => p.mine), locked = b.status === 'paying';
   const split = locked ? b.split : (S.pay.split || Math.max(1, S.guests.length || 1));
   const share = Math.ceil(+b.base / split), tipAmt = Math.round(share * S.pay.tip / 100), open = b.split - S.payments.length;
   const row = (l, v, cls) => h('div', { class: 'spread' + (cls || '') }, h('span', { class: cls ? '' : 'muted' }, l), h('span', { class: 'num' }, v));
   const itemised = h('div', { class: A('card'), style: '--i:0;gap:10px' },
     b.items.map((i) => h('div', { class: 'spread' }, h('span', { class: 'row', style: 'gap:10px' }, plate(i.art, i.name, 30, 'flat'), i.qty + ' × ' + i.name + (i.size ? ' (' + i.size + ')' : '')), h('span', { class: 'num' }, money(CUR, i.total)))),
-    h('div', { class: 'sum', style: 'padding-top:10px;border-top:1.5px dashed var(--line)' }, row('Subtotal', money(CUR, b.sub)), row('Service charge ' + b.service_percent + '%', money(CUR, b.service)), row('Tax ' + b.tax_percent + '%', money(CUR, b.tax)),
-      h('div', { class: 'spread t' }, h('span', {}, 'Total'), h('span', { class: 'num gold' }, money(CUR, b.base)))));
-  const others = S.payments.length ? h('div', { class: A('card'), style: '--i:1;gap:10px' }, h('span', { class: 'bb' }, 'Who is paying'),
-    S.payments.map((p) => h('div', { class: 'spread' }, h('span', {}, (p.mine ? 'You' : p.guest) + ' · ' + p.method_label), h('span', { class: 'row', style: 'gap:8px' }, h('span', { class: 'num b' }, money(CUR, p.amount)), h('span', { class: 'st ' + (p.status === 'paid' ? 'eating' : 'bill') }, p.status === 'paid' ? 'Paid' : 'Waiting for waiter')))),
-    open > 0 ? h('span', { class: 'muted sm' }, open + (open === 1 ? ' share is' : ' shares are') + ' still to be paid.') : null) : null;
-  const form = mine ? h('div', { class: A('card'), style: '--i:2;align-items:center;text-align:center;padding:22px;gap:8px' }, h('div', { class: 'livedot', style: 'width:14px;height:14px' }), h('h3', { class: 'd', style: 'font-size:24px' }, 'Your waiter is coming'), h('p', { class: 'muted' }, 'Pay ' + money(CUR, mine.amount) + ' by ' + mine.method_label.toLowerCase() + ' at your table. This screen updates the moment they confirm.'))
-    : [h('div', { class: A('card'), style: '--i:2;gap:12px' }, h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Split the bill'), h('span', { class: 'muted sm' }, locked ? 'Already chosen by the table' : S.guests.length > 1 ? S.guests.join(' and ') : 'Equal shares')),
-        h('div', { class: 'spread' }, h('div', { class: 'qty' }, h('button', { 'aria-label': 'Fewer people', disabled: locked, onclick: () => { S.pay.split = Math.max(1, split - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, split), h('button', { 'aria-label': 'More people', disabled: locked, onclick: () => { S.pay.split = Math.min(10, split + 1); render(); } }, icon('plus', 16, 2.4))),
-          h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:var(--acc-h)' }, money(CUR, share), h('span', { class: 'muted sm', style: 'font-family:var(--font-b);font-weight:600' }, ' each')))),
-      h('div', { class: A('card'), style: '--i:3;gap:12px' }, h('span', { class: 'bb' }, 'Tip'), h('div', { class: 'seg' }, [0, 5, 10, 15, 20].map((p) => h('button', { class: S.pay.tip === p ? 'on' : '', onclick: () => { S.pay.tip = p; render(); } }, p ? p + '%' : 'No tip')))),
-      h('div', { class: A('card'), style: '--i:4;gap:10px' }, h('span', { class: 'bb' }, 'Pay at the table by'),
-        METHODS.map(([k, label, ic]) => h('button', { class: 'row' + (S.pay.method === k ? ' on' : ''), style: `gap:12px;padding:12px 14px;border-radius:16px;border:1.5px solid ${S.pay.method === k ? 'var(--saf)' : 'var(--line)'};background:${S.pay.method === k ? 'var(--saf-s)' : 'var(--s1)'};text-align:left`, onclick: () => { S.pay.method = k; render(); } }, icon(ic, 22, 1.8), h('span', { class: 'grow b' }, label), S.pay.method === k ? icon('check', 18, 2.6) : null))),
-      h('div', { class: A('card'), style: '--i:5;gap:8px' }, h('label', { class: 'f' }, 'Email the invoice to', h('input', { id: 'pay-email', type: 'email', placeholder: 'you@example.com (optional)', value: S.pay.email, autocomplete: 'email', oninput: (e) => { S.pay.email = e.target.value; } })))];
-  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar('Your bill', 'status', h('span', { class: 'pill' }, '#' + b.id)),
+    h('div', { class: 'sum', style: 'padding-top:10px;border-top:1.5px dashed var(--line)' }, row(t('Subtotal'), money(CUR, b.sub)), row(t('Service charge {p}%', { p: b.service_percent }), money(CUR, b.service)), row(t('Tax {p}%', { p: b.tax_percent }), money(CUR, b.tax)),
+      h('div', { class: 'spread t' }, h('span', {}, t('Total')), h('span', { class: 'num gold' }, money(CUR, b.base)))));
+  const others = S.payments.length ? h('div', { class: A('card'), style: '--i:1;gap:10px' }, h('span', { class: 'bb' }, t('Who is paying')),
+    S.payments.map((p) => h('div', { class: 'spread' }, h('span', {}, (p.mine ? t('You') : p.guest) + ' · ' + t(methodName(p.method, p.method_label))), h('span', { class: 'row', style: 'gap:8px' }, h('span', { class: 'num b' }, money(CUR, p.amount)), h('span', { class: 'st ' + (p.status === 'paid' ? 'eating' : 'bill') }, p.status === 'paid' ? t('Paid') : t('Waiting for waiter'))))),
+    open > 0 ? h('span', { class: 'muted sm' }, t(open === 1 ? '{n} share is still to be paid.' : '{n} shares are still to be paid.', { n: open })) : null) : null;
+  const form = mine ? h('div', { class: A('card'), style: '--i:2;align-items:center;text-align:center;padding:22px;gap:8px' }, h('div', { class: 'livedot', style: 'width:14px;height:14px' }), h('h3', { class: 'd', style: 'font-size:24px' }, t('Your waiter is coming')), h('p', { class: 'muted' }, t('Pay {amount} by {method} at your table. This screen updates the moment they confirm.', { amount: money(CUR, mine.amount), method: t(methodName(mine.method, mine.method_label)) })))
+    : [h('div', { class: A('card'), style: '--i:2;gap:12px' }, h('div', { class: 'spread' }, h('span', { class: 'bb' }, t('Split the bill')), h('span', { class: 'muted sm' }, locked ? t('Already chosen by the table') : S.guests.length > 1 ? S.guests.join(t(' and ')) : t('Equal shares'))),
+        h('div', { class: 'spread' }, h('div', { class: 'qty' }, h('button', { 'aria-label': t('Fewer people'), disabled: locked, onclick: () => { S.pay.split = Math.max(1, split - 1); render(); } }, icon('minus', 16, 2.4)), h('span', {}, split), h('button', { 'aria-label': t('More people'), disabled: locked, onclick: () => { S.pay.split = Math.min(10, split + 1); render(); } }, icon('plus', 16, 2.4))),
+          h('span', { class: 'd num', style: 'font-size:24px;font-weight:700;color:var(--acc-h)' }, money(CUR, share), h('span', { class: 'muted sm', style: 'font-family:var(--font-b);font-weight:600' }, ' ' + t('each'))))),
+      h('div', { class: A('card'), style: '--i:3;gap:12px' }, h('span', { class: 'bb' }, t('Tip')), h('div', { class: 'seg' }, [0, 5, 10, 15, 20].map((p) => h('button', { class: S.pay.tip === p ? 'on' : '', onclick: () => { S.pay.tip = p; render(); } }, p ? p + '%' : t('No tip'))))),
+      h('div', { class: A('card'), style: '--i:4;gap:10px' }, h('span', { class: 'bb' }, t('Pay at the table by')),
+        METHODS.map(([k, label, ic]) => h('button', { class: 'row' + (S.pay.method === k ? ' on' : ''), style: `gap:12px;padding:12px 14px;border-radius:16px;border:1.5px solid ${S.pay.method === k ? 'var(--saf)' : 'var(--line)'};background:${S.pay.method === k ? 'var(--saf-s)' : 'var(--s1)'};text-align:start`, onclick: () => { S.pay.method = k; render(); } }, icon(ic, 22, 1.8), h('span', { class: 'grow b' }, t(label)), S.pay.method === k ? icon('check', 18, 2.6) : null))),
+      h('div', { class: A('card'), style: '--i:5;gap:8px' }, h('label', { class: 'f' }, t('Email the invoice to'), h('input', { id: 'pay-email', type: 'email', dir: 'ltr', placeholder: t('you@example.com (optional)'), value: S.pay.email, autocomplete: 'email', oninput: (e) => { S.pay.email = e.target.value; } })))];
+  return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('Your bill'), 'status', h('span', { class: 'pill' }, '#' + b.id)),
     h('div', { class: 'scroll col', style: 'padding:6px 18px 14px;gap:12px' }, itemised, others, form),
     mine ? null : h('div', { class: 'col', style: 'padding:16px 18px 28px;background:var(--s1);border-top:1px solid var(--line);border-radius:18px 18px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
-      h('button', { class: 'btn wide', onclick: payNow }, 'Pay ' + money(CUR, share + tipAmt))));
+      h('button', { class: 'btn wide', onclick: payNow }, t('Pay {amount}', { amount: money(CUR, share + tipAmt) }))));
 }
 async function payNow() {
   const b = S.bill, locked = b.status === 'paying', split = locked ? b.split : (S.pay.split || Math.max(1, S.guests.length || 1));
   if (!S.guest) { S.askName = true; S.sheetIn = true; render(); return; }
-  await act(async () => { await api(url('pay/'), { method: S.pay.method, tip: S.pay.tip, split, email: S.pay.email }); toast('Your waiter is on the way'); }, refreshState);
+  await act(async () => { await api(url('pay/'), { method: S.pay.method, tip: S.pay.tip, split, email: S.pay.email }); toast(t('Your waiter is on the way')); }, refreshState);
 }
 function thanksView() {
   const p = S.paid || { amount: '0', method: '', email: '', reviewed: false };
@@ -356,17 +370,17 @@ function thanksView() {
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') },
     h('div', { class: 'hero', style: 'padding:64px 20px 30px;flex:none;text-align:center' }, h('div', { class: 'col', style: 'position:relative;z-index:1;align-items:center;gap:10px' },
       h('div', { class: 'pop', style: 'width:76px;height:76px;border-radius:50%;background:var(--acc);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 10px rgba(76,141,255,.14),var(--glow);color:#fff' }, svg('<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path class="checkdraw" d="M5 13l4 4L19 7"/></svg>')),
-      h('h1', { class: 'd rise', style: '--i:2;font-size:34px;font-weight:700' }, 'Payment ', h('span', { class: 'gold' }, 'recorded')),
-      h('p', { class: 'muted rise', style: '--i:3' }, money(CUR, p.amount) + ' by ' + p.method + '. Thank you for dining with us.'))),
+      h('h1', { class: 'd rise', style: '--i:2;font-size:34px;font-weight:700' }, t('Payment'), ' ', h('span', { class: 'gold' }, t('recorded'))),
+      h('p', { class: 'muted rise', style: '--i:3' }, t('{amount} by {method}. Thank you for dining with us.', { amount: money(CUR, p.amount), method: t(p.method) })))),
     h('div', { class: 'scroll col', style: 'padding:8px 18px 22px;gap:12px' },
-      h('div', { class: A('card'), style: '--i:1' }, h('div', { class: 'spread' }, h('span', { class: 'bb' }, 'Invoice'), h('span', { class: 'muted sm' }, '#' + p.id)),
-        h('p', { class: 'muted' }, p.email ? 'We emailed the invoice to ' + p.email + '.' : 'No email was given, so no invoice was sent.'),
-        S.reward && S.reward.email ? h('span', { class: 'tag al', style: 'align-self:flex-start' }, 'Points added to ' + S.reward.email) : null),
-      done ? h('div', { class: 'card pop', style: 'align-items:center;gap:10px;padding:24px;text-align:center' }, h('h2', { class: 'd', style: 'font-size:30px;font-weight:700' }, 'Thank ', h('span', { class: 'gold' }, 'you')), h('p', { class: 'muted' }, 'Your review is with the owner.'), h('button', { class: 'btn dark wide', onclick: () => { S.paid = null; S.reviewed = false; go('menu'); } }, 'Back to the menu'))
-        : h('div', { class: A('card'), style: '--i:2;align-items:center;gap:14px;padding:20px' }, h('span', { class: 'd', style: 'font-size:22px;font-weight:700' }, 'How was your meal?'),
-          h('div', { class: 'row stars', style: 'gap:6px' }, [1, 2, 3, 4, 5].map((n) => h('button', { class: S.stars >= n ? 'on' : '', 'aria-label': n + (n === 1 ? ' star' : ' stars'), onclick: () => { S.stars = n; render(); } }, svg('<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>')))),
-          h('textarea', { id: 'review-in', rows: 2, 'aria-label': 'Comment', style: 'width:100%', maxlength: 300, placeholder: 'Anything we should know? (optional)' }),
-          h('button', { class: 'btn wide', disabled: !S.stars, onclick: () => act(async () => { await api(url('review/'), { stars: S.stars, comment: ($('#review-in') || {}).value }); S.reviewed = true; S.anim = true; }, refreshState) }, 'Post review'))));
+      h('div', { class: A('card'), style: '--i:1' }, h('div', { class: 'spread' }, h('span', { class: 'bb' }, t('Invoice')), h('span', { class: 'muted sm' }, '#' + p.id)),
+        h('p', { class: 'muted' }, p.email ? t('We emailed the invoice to {email}.', { email: p.email }) : t('No email was given, so no invoice was sent.')),
+        S.reward && S.reward.email ? h('span', { class: 'tag al', style: 'align-self:flex-start' }, t('Points added to {email}', { email: S.reward.email })) : null),
+      done ? h('div', { class: 'card pop', style: 'align-items:center;gap:10px;padding:24px;text-align:center' }, h('h2', { class: 'd', style: 'font-size:30px;font-weight:700' }, t('Thank'), ' ', h('span', { class: 'gold' }, t('you'))), h('p', { class: 'muted' }, t('Your review is with the owner.')), h('button', { class: 'btn dark wide', onclick: () => { S.paid = null; S.reviewed = false; go('menu'); } }, t('Back to the menu')))
+        : h('div', { class: A('card'), style: '--i:2;align-items:center;gap:14px;padding:20px' }, h('span', { class: 'd', style: 'font-size:22px;font-weight:700' }, t('How was your meal?')),
+          h('div', { class: 'row stars', style: 'gap:6px' }, [1, 2, 3, 4, 5].map((n) => h('button', { class: S.stars >= n ? 'on' : '', 'aria-label': t(n === 1 ? '{n} star' : '{n} stars', { n }), onclick: () => { S.stars = n; render(); } }, svg('<svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/></svg>')))),
+          h('textarea', { id: 'review-in', rows: 2, 'aria-label': t('Comment'), style: 'width:100%', maxlength: 300, placeholder: t('Anything we should know? (optional)') }),
+          h('button', { class: 'btn wide', disabled: !S.stars, onclick: () => act(async () => { await api(url('review/'), { stars: S.stars, comment: ($('#review-in') || {}).value }); S.reviewed = true; S.anim = true; }, refreshState) }, t('Post review')))));
 }
 const VIEWS = { menu: menuView, cart: cartView, placed: placedView, status: statusView, call: callView, bill: billView, thanks: thanksView, wifi: wifiView, rewards: rewardsView, quiz: quizView };
 
@@ -387,7 +401,7 @@ async function refreshState() {
   OUT = new Set(s.sold_out);
   Object.assign(S, { requests: s.requests, guest: s.guest, guests: s.guests, wifi: s.wifi, reward: s.reward, bill: s.bill, payments: s.payments, paid: s.paid });
   if (!S.guest && !S.nameAsked) { S.nameAsked = true; S.askName = true; S.sheetIn = true; }
-  if (S.paid && ['bill', 'status', 'call'].includes(S.view) && !S.orders.length) { S.view = 'thanks'; S.anim = true; toast('Payment confirmed'); }
+  if (S.paid && ['bill', 'status', 'call'].includes(S.view) && !S.orders.length) { S.view = 'thanks'; S.anim = true; toast(t('Payment confirmed')); }
   if (S.view === 'quiz') await loadQuiz();
   render();
 }
@@ -396,7 +410,7 @@ render();
 live('/ws/t/' + CODE + '/', refreshState);
 </script>
 <style>
-.seg-btn { min-height: 50px; padding: 0 16px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--s1); font-weight: 700; text-align: left; transition: background-color .2s, border-color .2s; }
+.seg-btn { min-height: 50px; padding: 0 16px; border-radius: 16px; border: 1.5px solid var(--line); background: var(--s1); font-weight: 700; text-align: start; transition: background-color .2s, border-color .2s; }
 .seg-btn:hover:not([disabled]) { border-color: var(--saf); }
 .seg-btn.on { border-color: var(--mint); background: var(--mint-s); color: var(--mint); }
 .seg-btn.wrong { border-color: var(--chi); background: var(--chi-s); color: #ff8f87; }

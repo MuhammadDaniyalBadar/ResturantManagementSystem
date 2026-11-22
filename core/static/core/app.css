@@ -191,3 +191,12 @@ label.f { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font
 .dtable td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
 .dtable tr:hover td { background: var(--s2); }
 .st.active { background: var(--mint-s); color: var(--mint); } .st.trial { background: var(--sky-s); color: var(--acc-h); } .st.expired, .st.suspended { background: var(--chi-s); color: #ff8f87; }
+
+/* Urdu: right-to-left with a Nastaliq face and room for its tall letters */
+[dir=rtl] body { font-family: 'Noto Nastaliq Urdu', var(--font-b); line-height: 2; }
+[dir=rtl] .d, [dir=rtl] h1, [dir=rtl] h2, [dir=rtl] h3 { font-family: 'Noto Nastaliq Urdu', var(--font-d); line-height: 1.7 !important; letter-spacing: 0; }
+[dir=rtl] .num, [dir=rtl] input[type=email] { font-family: var(--font-b); }
+[dir=rtl] .gcard .plus { right: auto; left: 12px; }
+[dir=rtl] .pick .pslot { right: auto; left: -2px; }
+[dir=rtl] .back svg, [dir=rtl] .iconbtn:has(path[d^="M15 6"]) svg { transform: scaleX(-1); }
+.gcard .gmain { text-align: start; }
