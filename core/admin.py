@@ -10,7 +10,7 @@ class SizeInline(admin.TabularInline):
 
 @admin.register(models.Dish)
 class DishAdmin(admin.ModelAdmin):
-    list_display = ("name", "category", "price", "station", "prep_minutes", "art", "featured", "available")
+    list_display = ("name", "category", "price", "station", "prep_minutes", "art", "photo", "featured", "available")
     list_filter = ("restaurant", "category", "station", "available")
     inlines = [SizeInline]
 

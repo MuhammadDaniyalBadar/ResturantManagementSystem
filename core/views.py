@@ -4,12 +4,16 @@ from decimal import Decimal
 from functools import wraps
 
 import segno
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.views import LoginView
+from django.core.cache import cache
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db.models import Avg, Count, F, Sum
 from django.db.models.functions import ExtractHour, TruncDate
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -92,7 +96,7 @@ def order_json(order, now):
         "seconds_old": seconds_since(order.created_at, now),
         "total": str(order.total),
         "items": [
-            {"name": i.dish.name, "size": i.size_label, "qty": i.quantity, "note": i.note, "station": i.dish.station, "ready": bool(i.ready_at), "art": i.dish.art, "prep": i.dish.prep_minutes, "deal": bool(i.deal_id)}
+            {"name": i.dish.name, "size": i.size_label, "qty": i.quantity, "note": i.note, "station": i.dish.station, "ready": bool(i.ready_at), "art": i.dish.picture, "prep": i.dish.prep_minutes, "deal": bool(i.deal_id)}
             for i in items
         ],
     }
@@ -154,7 +158,7 @@ def session_member(request, restaurant):
 def menu_data(restaurant):
     deals = {}
     for d in Deal.objects.filter(restaurant=restaurant, active=True).select_related("partner"):
-        deals.setdefault(d.dish_id, []).append({"id": d.id, "partner_id": d.partner_id, "partner": d.partner.name, "art": d.partner.art, "price": str(d.price), "normal": str(d.partner.price)})
+        deals.setdefault(d.dish_id, []).append({"id": d.id, "partner_id": d.partner_id, "partner": d.partner.name, "art": d.partner.picture, "price": str(d.price), "normal": str(d.partner.price)})
     categories = []
     for category in Category.objects.filter(restaurant=restaurant).prefetch_related("dish_set__sizes"):
         dishes = [
@@ -163,11 +167,10 @@ def menu_data(restaurant):
                 "name": d.name,
                 "description": d.description,
                 "price": str(d.price),
-                "image": d.image_url,
                 "allergens": [a.strip() for a in d.allergens.split(",") if a.strip()],
                 "spice": d.get_spice_display() if d.spice else "",
                 "sizes": [{"id": s.id, "label": s.label, "price": str(s.price)} for s in d.sizes.all()],
-                "art": d.art,
+                "art": d.picture,
                 "featured": d.featured,
                 "deals": deals.get(d.id, []),
             }
@@ -449,7 +452,7 @@ def owner_data(request):
     days = [(week + timedelta(days=i)).date() for i in range(7)]
     prep = Order.objects.filter(restaurant=r, ready_at__isnull=False, cooking_at__isnull=False, created_at__gte=today)
     prep_secs = [(o.ready_at - o.cooking_at).total_seconds() for o in prep]
-    best = (OrderItem.objects.filter(order__restaurant=r, order__created_at__gte=week).values(name=F("dish__name"), art=F("dish__art")).annotate(qty=Sum("quantity")).order_by("-qty")[:5])
+    best = (OrderItem.objects.filter(order__restaurant=r, order__created_at__gte=week).values(name=F("dish__name"), art=F("dish__art"), photo=F("dish__photo")).annotate(qty=Sum("quantity")).order_by("-qty")[:5])
     hours = dict(Order.objects.filter(restaurant=r, created_at__gte=week).annotate(h=ExtractHour("created_at")).values_list("h").annotate(c=Count("id")).order_by("h"))
     reviews = Review.objects.filter(bill__restaurant=r).select_related("guest", "bill__table")
     avg = reviews.aggregate(a=Avg("stars"))["a"]
@@ -461,8 +464,39 @@ def owner_data(request):
         "avg_prep": int(sum(prep_secs) / len(prep_secs)) if prep_secs else None,
         "days": [{"label": d.strftime("%a"), "sales": float(day_sales.get(d, 0))} for d in days],
         "hours": [{"hour": h, "orders": hours.get(h, 0)} for h in range(10, 24)],
-        "best": [{"name": b["name"], "art": b["art"], "qty": b["qty"]} for b in best],
+        "best": [{"name": b["name"], "art": settings.MEDIA_URL + b["photo"] if b["photo"] else b["art"], "qty": b["qty"]} for b in best],
         "rating": round(avg, 1) if avg else None, "review_count": reviews.count(),
         "reviews": [{"stars": v.stars, "comment": v.comment, "guest": v.guest.name if v.guest_id else "Guest", "table": v.bill.table.number, "age": seconds_since(v.created_at, now)} for v in reviews[:12]],
         "tables": floor_json(r, now),
     })
+
+
+# ---------- login with lockout, health check ----------
+
+LOGIN_TRIES, LOGIN_LOCK_SECONDS = 5, 15 * 60
+
+
+class Login(LoginView):
+    """Five wrong passwords for one username from one address locks that pair out for 15 minutes."""
+
+    def _key(self):
+        return "login-fail:%s:%s" % (self.request.META.get("REMOTE_ADDR", ""), self.request.POST.get("username", "").strip().lower())
+
+    def post(self, request, *args, **kwargs):
+        if cache.get(self._key(), 0) >= LOGIN_TRIES:
+            # an unbound form, so a locked-out attempt never checks the password
+            return self.render_to_response(self.get_context_data(form=AuthenticationForm(request), locked=True), status=429)
+        return super().post(request, *args, **kwargs)
+
+    def form_invalid(self, form):
+        key = self._key()
+        cache.set(key, cache.get(key, 0) + 1, LOGIN_LOCK_SECONDS)
+        return super().form_invalid(form)
+
+    def form_valid(self, form):
+        cache.delete(self._key())
+        return super().form_valid(form)
+
+
+def healthz(request):
+    return HttpResponse("ok", content_type="text/plain")

@@ -6,6 +6,7 @@
     {% csrf_token %}
     <div class="logo">SG</div>
     <h1 class="d" style="font-size: 34px; font-weight: 700; line-height: 1">Staff login</h1>
+    {% if locked %}<p style="color: #ff8f87; font-weight: 600">Too many wrong passwords. Try again in 15 minutes.</p>{% endif %}
     {% if form.errors %}<p style="color: #ff8a7e; font-weight: 600">Wrong username or password.</p>{% endif %}
     <label class="f">Username<input name="username" autocomplete="username" autofocus required></label>
     <label class="f">Password<input name="password" type="password" autocomplete="current-password" required></label>

@@ -85,7 +85,7 @@ def bill_summary(bill):
     for o in bill.orders.all():
         for i in o.items.all():
             key = (i.dish_id, i.size_label, i.unit_price)
-            row = items.setdefault(key, {"name": i.dish.name, "size": i.size_label, "art": i.dish.art, "qty": 0, "unit": i.unit_price})
+            row = items.setdefault(key, {"name": i.dish.name, "size": i.size_label, "art": i.dish.picture, "qty": 0, "unit": i.unit_price})
             row["qty"] += i.quantity
     sub = sum((r["unit"] * r["qty"] for r in items.values()), Decimal(0))
     r = bill.restaurant

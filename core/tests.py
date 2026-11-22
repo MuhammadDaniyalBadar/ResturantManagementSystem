@@ -435,3 +435,60 @@ class Dining(TestCase):
         self.assertEqual((d["sales_today"], d["orders_today"], d["rating"], d["review_count"]), ("970.00", 1, 4.0, 1))
         self.assertEqual(d["best"][0]["qty"], 3)
         self.assertEqual(owner.get("/owner/").status_code, 200)
+
+
+class BetaFoundation(TestCase):
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.r, self.table, self.curry, self.naan, self.users = make_restaurant("A")
+
+    def test_health_check(self):
+        self.assertEqual(Client().get("/healthz/").content, b"ok")
+
+    def test_five_wrong_passwords_lock_the_login_even_for_the_right_one(self):
+        c, name = Client(), self.users["waiter"].username
+        for _ in range(5):
+            self.assertEqual(c.post("/accounts/login/", {"username": name, "password": "wrong"}).status_code, 200)
+        locked = c.post("/accounts/login/", {"username": name, "password": "pw"})
+        self.assertEqual(locked.status_code, 429)
+        self.assertContains(locked, "Too many wrong passwords", status_code=429)
+        self.assertNotIn("_auth_user_id", c.session)
+        # another user from the same address is not locked
+        self.assertEqual(c.post("/accounts/login/", {"username": self.users["owner"].username, "password": "pw"}).status_code, 302)
+
+    def test_right_password_resets_the_count(self):
+        c, name = Client(), self.users["waiter"].username
+        for _ in range(4):
+            c.post("/accounts/login/", {"username": name, "password": "wrong"})
+        self.assertEqual(c.post("/accounts/login/", {"username": name, "password": "pw"}).status_code, 302)
+        c.logout()
+        for _ in range(4):
+            c.post("/accounts/login/", {"username": name, "password": "wrong"})
+        self.assertEqual(c.post("/accounts/login/", {"username": name, "password": "pw"}).status_code, 302)
+
+    def test_uploaded_photo_replaces_the_illustration_on_menu_and_tickets(self):
+        import shutil, tempfile
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        png = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+                            "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
+        with override_settings(MEDIA_ROOT=tmp):
+            self.curry.art = "makhani"
+            self.curry.photo = SimpleUploadedFile("curry.png", png, content_type="image/png")
+            self.curry.full_clean()
+            self.curry.save()
+            menu = Client().get(f"/t/{self.table.code}/").context["menu"]
+            arts = {d["name"]: d["art"] for c in menu["categories"] for d in c["dishes"]}
+            self.assertTrue(arts["Curry"].startswith("/media/dishes/curry"))
+            self.assertEqual(arts["Naan"], "")
+            self.assertEqual(Client().get(arts["Curry"]).status_code, 200)
+
+    def test_photo_over_5mb_is_rejected(self):
+        from django.core.exceptions import ValidationError
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from .models import max_photo_size
+        with self.assertRaises(ValidationError):
+            max_photo_size(SimpleUploadedFile("big.png", b"0" * (5 * 1024 * 1024 + 1)))

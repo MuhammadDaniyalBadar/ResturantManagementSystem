@@ -1,6 +1,7 @@
 import secrets
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -26,6 +27,11 @@ class Restaurant(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def picture(self):
+        """Uploaded photo URL if there is one, otherwise the illustration name."""
+        return self.photo.url if self.photo else self.art
 
 
 class StaffProfile(models.Model):
@@ -68,6 +74,16 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
+    @property
+    def picture(self):
+        """Uploaded photo URL if there is one, otherwise the illustration name."""
+        return self.photo.url if self.photo else self.art
+
+
+def max_photo_size(f):
+    if f.size > 5 * 1024 * 1024:
+        raise ValidationError("The photo is larger than 5 MB.")
+
 
 class Dish(models.Model):
     SPICE = [("", "-"), ("mild", "Mild"), ("medium", "Medium"), ("hot", "Hot")]
@@ -81,8 +97,7 @@ class Dish(models.Model):
     name = models.CharField(max_length=120)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=8, decimal_places=2)
-    # shortcut: a photo link, not an upload, so Alpha needs no image library or file storage.
-    image_url = models.URLField(blank=True)
+    photo = models.ImageField(upload_to="dishes/", blank=True, validators=[max_photo_size], help_text="Square photo, up to 5 MB. Shown instead of the illustration.")
     allergens = models.CharField(max_length=120, blank=True, help_text="Comma separated, e.g. Dairy, Nuts")
     spice = models.CharField(max_length=6, choices=SPICE, blank=True)
     station = models.CharField(max_length=40, default="Kitchen", help_text="Kitchen column, e.g. Tandoor, Curry, Drinks")
@@ -97,6 +112,11 @@ class Dish(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def picture(self):
+        """Uploaded photo URL if there is one, otherwise the illustration name."""
+        return self.photo.url if self.photo else self.art
 
 
 class DishSize(models.Model):

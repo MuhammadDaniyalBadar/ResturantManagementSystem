@@ -37,7 +37,8 @@ const flame = () => svg('<svg width="18" height="18" viewBox="0 0 24 24" fill="c
 // A dish illustration, or a coloured initial when the dish has none.
 const DISH_BASE = (document.querySelector('meta[name=dish-base]') || {}).content || '/static/core/dishes/';
 function plate(art, name, size, cls) {
-  if (art) return h('img', { class: 'plate ' + (cls || ''), src: DISH_BASE + art + '.svg', width: size, height: size, alt: '', style: `width:${size}px;height:${size}px` });
+  const photo = art && art.includes('/');  // uploaded photos come as a URL, illustrations as a name
+  if (art) return h('img', { class: 'plate ' + (cls || ''), src: photo ? art : DISH_BASE + art + '.svg', width: size, height: size, alt: '', style: `width:${size}px;height:${size}px` + (photo ? ';border-radius:50%;object-fit:cover' : '') });
   return h('div', { class: 'fallback ' + (cls || ''), style: `width:${size}px;height:${size}px;font-size:${Math.round(size / 3)}px` }, (name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2));
 }
 

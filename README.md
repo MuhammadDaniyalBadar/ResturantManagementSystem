@@ -2,7 +2,7 @@
 
 QR-based ordering for restaurants. A guest scans the code on a table, orders from their phone, and the staff and kitchen screens update live. Python (Django + Channels), SQLite, plain JavaScript.
 
-Alpha = one restaurant, for demos and testing. Not ready for a live restaurant yet (see "Not in Alpha").
+Beta 1 = the full Alpha flow plus a production setup (Postgres, Redis, real email, HTTPS-only settings, login lockout, dish photo uploads). Still one restaurant per deployment; see "Still to come".
 
 ## Run it on your computer
 
@@ -44,11 +44,23 @@ If you ran an older version, delete `db.sqlite3`, then run `migrate` and `seed_d
 
 One dark, neutral operations theme: Inter type, a single blue accent, and colour only where it means something (green live or good, amber attention, red late). Staff pages (service desk, kitchen display, overview, QR codes) share a left navigation rail that becomes a top bar on narrow screens. Each dish has an illustration (`core/static/core/dishes/`). In the admin, set a dish's **Art** to pick its illustration and tick **Featured** to show it as the Chef's pick. A dish with no art gets an initial. Fonts load from Google Fonts, so the first view needs an internet connection; without it the app falls back to system fonts.
 
-## Get a public link (Render)
+## Put it online (Render)
 
-1. Render dashboard, New, Blueprint, pick this repository and the `alpha` branch. It reads `render.yaml`.
-2. When the deploy is live, open the URL. The demo password is in the service's `DEMO_PASSWORD` environment variable.
-3. The free plan keeps SQLite inside the container, so data resets on each deploy and sleeps when idle. Fine for demos only.
+`render.yaml` sets up everything: the app, a Postgres database, Redis for live updates, and a 1 GB disk for dish photos.
+
+1. Push this branch to GitHub. In the Render dashboard choose **New**, then **Blueprint**, pick this repository and branch. Render reads `render.yaml` and shows what it will create. Approve it.
+2. Cost: the app needs the **Starter** plan (because of the photo disk) and the database is **Basic-256mb**, both paid; Redis is free. Check current prices on Render before approving.
+3. When it is live, open the `onrender.com` URL. The demo restaurant is created on the first start (`SEED_DEMO=1`); its password is the `DEMO_PASSWORD` value in the service's Environment tab. Set `SEED_DEMO` to `0` once you have a real restaurant.
+4. Real invoice emails: in the Environment tab fill `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and `DEFAULT_FROM_EMAIL` (for example a Gmail app password with `smtp.gmail.com`, or Brevo/SendGrid SMTP).
+5. Own domain: add it in Render, then add it to `ALLOWED_HOSTS` (comma separated).
+
+Production settings switch on automatically when `DEBUG=0`: only listed hosts are accepted, cookies are HTTPS only, HTTP redirects to HTTPS, HSTS is on. Five wrong passwords for one username lock it for 15 minutes. `/healthz/` answers `ok` for the host's health check.
+
+On your own computer nothing changes: without `DATABASE_URL` and `REDIS_URL` it uses SQLite and in-memory updates. After pulling this version run `pip install -r requirements.txt` and `python manage.py migrate` once.
+
+## Dish photos
+
+In the admin, open a dish and upload a **Photo** (square works best, up to 5 MB). It replaces the illustration on the menu, kitchen tickets and the owner overview.
 
 ## Tests
 
@@ -58,14 +70,12 @@ python manage.py test
 
 Covers prices computed on the server, status rules and roles, one restaurant never seeing another's data, and live websocket pushes.
 
-## Not in Alpha (see the SOW)
+## Still to come (see the SOW)
 
-Payments and bills, floor map, sold-out toggle, order edits, reviews, reports, branding, multi-restaurant onboarding, PWA install. Known shortcuts, each marked `shortcut:` in the code:
+Beta 2: sold-out toggle, order edits and cancels, staff management, admin scoped per restaurant. Beta 3: restaurant signup, platform console, branding, plans. Beta 4: reservations, inventory, languages, payment gateway. Known shortcuts, each marked `shortcut:` in the code:
 
-- In-memory channel layer: one server process only. Use Redis before running more.
 - Admin is not scoped per restaurant: fine for one restaurant, fix before a second one.
-- Dish photos are links, not uploads.
-- All hosts allowed: set `ALLOWED_HOSTS` before a real customer uses it.
+- Uploaded photos are served by Django from the disk: fine for a few restaurants, move to S3 or a CDN at scale.
 - Guests at a table share the order list but not a cart.
 
 Design: `docs/superpowers/specs/2026-11-20-restaurant-alpha-design.md`.

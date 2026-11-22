@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -12,13 +13,23 @@ if not SECRET_KEY:
         raise ImproperlyConfigured("Set SECRET_KEY when DEBUG is off.")
     SECRET_KEY = "dev-only-insecure-key"
 
-# shortcut: any host allowed, set ALLOWED_HOSTS before a real customer uses it.
-ALLOWED_HOSTS = os.environ.get("ALLOWED_HOSTS", "*").split(",")
+# Any host only while developing. In production list the domains in ALLOWED_HOSTS (Render's own is added for you).
+ALLOWED_HOSTS = [h for h in os.environ.get("ALLOWED_HOSTS", "*" if DEBUG else "").split(",") if h]
 CSRF_TRUSTED_ORIGINS = [o for o in os.environ.get("CSRF_TRUSTED_ORIGINS", "").split(",") if o]
 if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
     CSRF_TRUSTED_ORIGINS.append("https://" + os.environ["RENDER_EXTERNAL_HOSTNAME"])
+if not DEBUG and not ALLOWED_HOSTS:
+    raise ImproperlyConfigured("Set ALLOWED_HOSTS when DEBUG is off.")
 if os.environ.get("BEHIND_PROXY") == "1":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+if not DEBUG:
+    SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = True
+    SECURE_SSL_REDIRECT = os.environ.get("BEHIND_PROXY") == "1"
+    SECURE_REDIRECT_EXEMPT = [r"^healthz/$"]  # the host's health check calls over plain HTTP
+    SECURE_HSTS_SECONDS = 60 * 60 * 24 * 30
+    SECURE_REFERRER_POLICY = "same-origin"
+    X_FRAME_OPTIONS = "DENY"
 
 INSTALLED_APPS = [
     "daphne",
@@ -59,15 +70,17 @@ TEMPLATES = [
 ]
 
 ASGI_APPLICATION = "config.asgi.application"
-# shortcut: in-memory layer works for one server process only, switch to Redis before running more than one.
-CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
+# Live updates and the login lockout counter go through Redis when REDIS_URL is set, so several server
+# processes share them. Without it (on your own computer) they stay in memory in one process.
+REDIS_URL = os.environ.get("REDIS_URL", "")
+if REDIS_URL:
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels_redis.core.RedisChannelLayer", "CONFIG": {"hosts": [REDIS_URL]}}}
+    CACHES = {"default": {"BACKEND": "django.core.cache.backends.redis.RedisCache", "LOCATION": REDIS_URL}}
+else:
+    CHANNEL_LAYERS = {"default": {"BACKEND": "channels.layers.InMemoryChannelLayer"}}
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": os.environ.get("DB_PATH", BASE_DIR / "db.sqlite3"),
-    }
-}
+# Postgres when DATABASE_URL is set (production), otherwise a SQLite file.
+DATABASES = {"default": dj_database_url.config(default="sqlite:///" + str(os.environ.get("DB_PATH", BASE_DIR / "db.sqlite3")))}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LANGUAGE_CODE = "en-us"
@@ -76,6 +89,9 @@ USE_TZ = True
 
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+# Uploaded dish photos. On Render this folder is a persistent disk (see render.yaml).
+MEDIA_URL = "/media/"
+MEDIA_ROOT = os.environ.get("MEDIA_ROOT", BASE_DIR / "media")
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {"BACKEND": "whitenoise.storage.CompressedStaticFilesStorage"},

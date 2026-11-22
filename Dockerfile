@@ -5,5 +5,5 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN SECRET_KEY=build-only python manage.py collectstatic --noinput
-# Alpha: SQLite lives inside the container, so data resets on every deploy and the demo data is recreated.
-CMD ["sh", "-c", "python manage.py migrate --noinput && python manage.py seed_demo --if-empty && exec daphne --proxy-headers -b 0.0.0.0 -p ${PORT:-8000} config.asgi:application"]
+# Data lives in Postgres (DATABASE_URL) and photos on a disk (MEDIA_ROOT). SEED_DEMO=1 adds the demo restaurant once.
+CMD ["sh", "-c", "python manage.py migrate --noinput && if [ \"$SEED_DEMO\" = 1 ]; then python manage.py seed_demo --if-empty; fi && exec daphne --proxy-headers -b 0.0.0.0 -p ${PORT:-8000} config.asgi:application"]

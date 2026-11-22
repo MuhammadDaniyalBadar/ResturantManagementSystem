@@ -1,15 +1,54 @@
+# Beta: web service + Postgres + Redis (Key Value) + a disk for dish photos.
+# Paid plans: the web service needs "starter" for the disk, and a paid database does not expire.
+databases:
+  - name: restaurant-db
+    plan: basic-256mb
+    databaseName: restaurant
+    user: restaurant
+
 services:
-  - type: web
-    name: restaurant-alpha
-    runtime: docker
+  - type: keyvalue
+    name: restaurant-redis
     plan: free
-    healthCheckPath: /
+    ipAllowList: []  # reachable only from your own Render services
+
+  - type: web
+    name: restaurant
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz/
+    disk:
+      name: media
+      mountPath: /data/media
+      sizeGB: 1
     envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: restaurant-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: restaurant-redis
+          property: connectionString
       - key: SECRET_KEY
         generateValue: true
       - key: DEMO_PASSWORD
         generateValue: true
+      - key: SEED_DEMO
+        value: "1"
       - key: DEBUG
         value: "0"
       - key: BEHIND_PROXY
         value: "1"
+      - key: MEDIA_ROOT
+        value: /data/media
+      # Set these in the Render dashboard to send real invoice emails (e.g. Gmail app password, SendGrid, Brevo).
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: DEFAULT_FROM_EMAIL
+        sync: false
