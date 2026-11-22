@@ -2,7 +2,7 @@
 
 QR-based ordering for restaurants. A guest scans the code on a table, orders from their phone, and the staff and kitchen screens update live. Python (Django + Channels), SQLite, plain JavaScript.
 
-Beta 1 = the full Alpha flow plus a production setup (Postgres, Redis, real email, HTTPS-only settings, login lockout, dish photo uploads). Still one restaurant per deployment; see "Still to come".
+A complete QR dining platform you can sell: restaurants sign up for a free trial, pay for a plan, and run ordering, kitchen, floor, bookings, stock, team and reports from one place. You run every restaurant from the platform console. See "Still to come" for what is not built yet.
 
 ## Run it on your computer
 
