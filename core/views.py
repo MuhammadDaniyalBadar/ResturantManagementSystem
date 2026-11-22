@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from . import services
-from .models import (Bill, Category, Deal, Guest, Member, Order, OrderItem, Payment, QuizQuestion, Review, ServiceRequest,
+from .models import (Bill, Category, Deal, Dish, Guest, Member, Order, OrderItem, Payment, QuizQuestion, Review, ServiceRequest,
                      StaffProfile, Table)
 
 OWNER, WAITER, KITCHEN = StaffProfile.OWNER, StaffProfile.WAITER, StaffProfile.KITCHEN
@@ -394,7 +394,8 @@ def kitchen_page(request):
 @staff_only(KITCHEN, OWNER, api=True)
 def kitchen_data(request):
     now = timezone.now()
-    stations = {}
+    # every station shows as a column, even with nothing cooking
+    stations = {s: [] for s in Dish.objects.filter(restaurant=request.profile.restaurant).values_list("station", flat=True).distinct()}
     for o in orders_qs(restaurant=request.profile.restaurant, status=Order.COOKING).order_by("cooking_at"):
         data = order_json(o, now)
         for station in sorted({i["station"] for i in data["items"]}):
@@ -404,7 +405,8 @@ def kitchen_data(request):
             target = max(i["prep"] for i in lines) * 60  # over this and the ticket turns red
             ticket = {"order_id": o.id, "table": o.table.number, "elapsed": seconds_since(o.cooking_at, now), "target": target, "items": lines}
             stations.setdefault(station, []).append(ticket)
-    return JsonResponse({"stations": [{"name": n, "tickets": t} for n, t in sorted(stations.items())]})
+    waiting = Order.objects.filter(restaurant=request.profile.restaurant, status=Order.PLACED).count()
+    return JsonResponse({"waiting": waiting, "stations": [{"name": n, "tickets": t} for n, t in sorted(stations.items())]})
 
 
 @require_POST

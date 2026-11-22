@@ -34,10 +34,10 @@ function ticket(station, t, n) {
 async function refresh() {
   const d = await api('/kitchen/data/');
   const n = d.stations.reduce((t, s) => t + s.tickets.length, 0);
-  $('#open').textContent = n + ' open';
-  $('#board').replaceChildren(...(d.stations.length
-    ? d.stations.map((s) => h('div', { class: 'col3' }, h('div', { class: 'spread' }, h('h2', { class: 'd', style: 'font-size:26px;font-weight:700' }, s.name), h('span', { class: 'pill' }, s.tickets.length + (s.tickets.length === 1 ? ' ticket' : ' tickets'))), s.tickets.map((t, i) => ticket(s.name, t, i))))
-    : [h('div', { class: 'empty', style: 'grid-column:1/-1;padding:60px' }, 'No orders cooking right now.')]));
+  $('#open').textContent = n + ' cooking' + (d.waiting ? ' · ' + d.waiting + ' waiting for the waiter' : '');
+  $('#board').replaceChildren(...d.stations.map((s) => h('div', { class: 'col3' },
+    h('div', { class: 'spread' }, h('h2', { class: 'd', style: 'font-size:26px;font-weight:700' }, s.name), h('span', { class: 'pill' }, s.tickets.length + (s.tickets.length === 1 ? ' ticket' : ' tickets'))),
+    s.tickets.length ? s.tickets.map((t, i) => ticket(s.name, t, i)) : h('div', { class: 'empty' }, 'All clear. Tickets appear here when the waiter sends an order to the kitchen.'))));
   first = false;
 }
 

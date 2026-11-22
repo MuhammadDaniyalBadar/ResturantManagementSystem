@@ -146,7 +146,7 @@ class Views(TestCase):
         services.advance_order(order, "waiter")
         kitchen = Client()
         kitchen.force_login(self.users["kitchen"])
-        stations = {s["name"]: s["tickets"][0] for s in kitchen.get("/kitchen/data/").json()["stations"]}
+        stations = {s["name"]: s["tickets"][0] for s in kitchen.get("/kitchen/data/").json()["stations"] if s["tickets"]}
         self.assertEqual(stations["Curry"]["target"], 18 * 60)
         self.assertEqual(stations["Tandoor"]["target"], 8 * 60)
 
@@ -195,11 +195,11 @@ class Views(TestCase):
         self.assertEqual(waiter.get("/staff/data/").json()["orders"][0]["action"], "Send to kitchen")
         self.assertEqual(self.post(waiter, f"/staff/orders/{order.id}/advance/").status_code, 200)
         board = kitchen.get("/kitchen/data/").json()["stations"]
-        self.assertEqual([s["name"] for s in board], ["Curry", "Tandoor"])
+        self.assertEqual([s["name"] for s in board if s["tickets"]], ["Curry", "Tandoor"])
         self.assertEqual(self.post(waiter, f"/kitchen/orders/{order.id}/ready/", {"station": "Curry"}).status_code, 403)
         for station in ("Curry", "Tandoor"):
             self.assertEqual(self.post(kitchen, f"/kitchen/orders/{order.id}/ready/", {"station": station}).status_code, 200)
-        self.assertEqual(kitchen.get("/kitchen/data/").json()["stations"], [])
+        self.assertEqual([s for s in kitchen.get("/kitchen/data/").json()["stations"] if s["tickets"]], [])
         self.assertEqual(waiter.get("/staff/data/").json()["orders"][0]["action"], "Mark served")
         self.assertEqual(self.post(waiter, f"/staff/orders/{order.id}/advance/").status_code, 200)
         self.assertEqual(waiter.get("/staff/data/").json()["orders"], [])
