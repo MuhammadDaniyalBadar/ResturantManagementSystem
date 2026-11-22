@@ -46,10 +46,10 @@ One dark, neutral operations theme: Inter type, a single blue accent, and colour
 
 ## Put it online (Render)
 
-`render.yaml` sets up everything: the app, a Postgres database, Redis for live updates, and a 1 GB disk for dish photos.
+`render.yaml` sets up the app, a Postgres database and Redis for live updates, all on Render's **free** plans.
 
 1. Push this branch to GitHub. In the Render dashboard choose **New**, then **Blueprint**, pick this repository and branch. Render reads `render.yaml` and shows what it will create. Approve it.
-2. Cost: the app needs the **Starter** plan (because of the photo disk) and the database is **Basic-256mb**, both paid; Redis is free. Check current prices on Render before approving.
+2. Free plan limits: the app sleeps after 15 idle minutes (the next visit takes about a minute to wake it), the free database expires after 30 days (Render emails you first), and uploaded dish photos are lost when the app restarts. For a paying restaurant, switch to the paid plans noted at the top of `render.yaml`.
 3. When it is live, open the `onrender.com` URL. The demo restaurant is created on the first start (`SEED_DEMO=1`); its password is the `DEMO_PASSWORD` value in the service's Environment tab. Set `SEED_DEMO` to `0` once you have a real restaurant.
 4. Real invoice emails: in the Environment tab fill `EMAIL_HOST`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` and `DEFAULT_FROM_EMAIL` (for example a Gmail app password with `smtp.gmail.com`, or Brevo/SendGrid SMTP).
 5. Own domain: add it in Render, then add it to `ALLOWED_HOSTS` (comma separated).

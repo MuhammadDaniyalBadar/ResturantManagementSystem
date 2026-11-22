@@ -1,8 +1,10 @@
-# Beta: web service + Postgres + Redis (Key Value) + a disk for dish photos.
-# Paid plans: the web service needs "starter" for the disk, and a paid database does not expire.
+# Beta, free plans only: web service + Postgres + Redis (Key Value).
+# Free limits: the app sleeps after 15 idle minutes (first visit then takes about a minute), the free
+# database expires after 30 days, and uploaded photos are lost when the app restarts (no disk on free).
+# To upgrade later: plan "starter" + the disk block below for the web service, "basic-256mb" for the database.
 databases:
   - name: restaurant-db
-    plan: basic-256mb
+    plan: free
     databaseName: restaurant
     user: restaurant
 
@@ -15,12 +17,12 @@ services:
   - type: web
     name: restaurant
     runtime: docker
-    plan: starter
+    plan: free
     healthCheckPath: /healthz/
-    disk:
-      name: media
-      mountPath: /data/media
-      sizeGB: 1
+    # disk:            # paid plans only; keeps uploaded photos across restarts
+    #   name: media
+    #   mountPath: /data/media
+    #   sizeGB: 1
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -41,8 +43,6 @@ services:
         value: "0"
       - key: BEHIND_PROXY
         value: "1"
-      - key: MEDIA_ROOT
-        value: /data/media
       # Set these in the Render dashboard to send real invoice emails (e.g. Gmail app password, SendGrid, Brevo).
       - key: EMAIL_HOST
         sync: false
