@@ -908,3 +908,11 @@ class Inventory(TestCase):
         kitchen.force_login(self.users["kitchen"])
         services.adjust_stock(self.paneer, count=50)
         self.assertEqual([x["name"] for x in kitchen.get("/kitchen/data/").json()["low"]], ["Paneer"])
+
+
+class HealthCheck(TestCase):
+    def test_health_check_answers_any_host_without_redirect(self):
+        from django.test import override_settings
+        with override_settings(ALLOWED_HOSTS=["example.com"], SECURE_SSL_REDIRECT=True):
+            r = Client().get("/healthz/", HTTP_HOST="10.0.0.7:10000")
+        self.assertEqual((r.status_code, r.content), (200, b"ok"))
