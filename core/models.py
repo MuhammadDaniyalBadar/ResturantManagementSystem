@@ -1,3 +1,4 @@
+import functools
 import re
 import secrets
 from datetime import date
@@ -15,6 +16,23 @@ def new_code():
 def max_photo_size(f):
     if f.size > 5 * 1024 * 1024:
         raise ValidationError("The photo is larger than 5 MB.")
+
+
+PHOTO_TYPES = ("jpg", "jpeg", "png", "webp")
+
+
+@functools.lru_cache(maxsize=512)
+def bundled_photo(name):
+    """URL of core/static/core/photos/<dish-name>.jpg (or .png/.webp) if that file ships with the app.
+    Photos added to the code survive restarts on hosts without a disk, unlike uploads."""
+    from django.contrib.staticfiles import finders
+    from django.templatetags.static import static
+    from django.utils.text import slugify
+    for ext in PHOTO_TYPES:
+        path = f"core/photos/{slugify(name)}.{ext}"
+        if finders.find(path):
+            return static(path)
+    return ""
 
 
 # Plans restaurants pay for. Limits are enforced when a table or a staff login is added. None = no limit.
@@ -92,11 +110,6 @@ class Restaurant(models.Model):
     def __str__(self):
         return self.name
 
-    @property
-    def picture(self):
-        """Uploaded photo URL if there is one, otherwise the illustration name."""
-        return self.photo.url if self.photo else self.art
-
 
 class StaffProfile(models.Model):
     OWNER, WAITER, KITCHEN = "owner", "waiter", "kitchen"
@@ -138,11 +151,6 @@ class Category(models.Model):
     def __str__(self):
         return self.name
 
-    @property
-    def picture(self):
-        """Uploaded photo URL if there is one, otherwise the illustration name."""
-        return self.photo.url if self.photo else self.art
-
 
 class Dish(models.Model):
     SPICE = [("", "-"), ("mild", "Mild"), ("medium", "Medium"), ("hot", "Hot")]
@@ -181,8 +189,10 @@ class Dish(models.Model):
 
     @property
     def picture(self):
-        """Uploaded photo URL if there is one, otherwise the illustration name."""
-        return self.photo.url if self.photo else self.art
+        """An uploaded photo, else a photo file named after the dish in static/core/photos/, else the illustration name."""
+        if self.photo:
+            return self.photo.url
+        return bundled_photo(self.name) or self.art
 
 
 class DishSize(models.Model):

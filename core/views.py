@@ -21,7 +21,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from . import services
-from .models import (PLANS, TRIAL_DAYS, Bill, Category, Deal, Dish, Guest, Ingredient, Member, Order, OrderItem, Payment, PlanPayment, QuizQuestion,
+from .models import (PLANS, bundled_photo, TRIAL_DAYS, Bill, Category, Deal, Dish, Guest, Ingredient, Member, Order, OrderItem, Payment, PlanPayment, QuizQuestion,
                      Reservation, Restaurant, Review, ServiceRequest, StaffProfile, Table)
 
 OWNER, WAITER, KITCHEN = StaffProfile.OWNER, StaffProfile.WAITER, StaffProfile.KITCHEN
@@ -532,7 +532,7 @@ def owner_data(request):
         "avg_prep": int(sum(prep_secs) / len(prep_secs)) if prep_secs else None,
         "days": [{"label": d.strftime("%a"), "sales": float(day_sales.get(d, 0))} for d in days],
         "hours": [{"hour": h, "orders": hours.get(h, 0)} for h in range(10, 24)],
-        "best": [{"name": b["name"], "art": settings.MEDIA_URL + b["photo"] if b["photo"] else b["art"], "qty": b["qty"]} for b in best],
+        "best": [{"name": b["name"], "art": settings.MEDIA_URL + b["photo"] if b["photo"] else (bundled_photo(b["name"]) or b["art"]), "qty": b["qty"]} for b in best],
         "rating": round(avg, 1) if avg else None, "review_count": reviews.count(),
         "reviews": [{"stars": v.stars, "comment": v.comment, "guest": v.guest.name if v.guest_id else "Guest", "table": v.bill.table.number, "age": seconds_since(v.created_at, now)} for v in reviews[:12]],
         "tables": floor_json(r, now),

@@ -1002,3 +1002,24 @@ class BuiltInMenu(TestCase):
         apply_menu(r)
         r.refresh_from_db()
         self.assertEqual(r.name, "Karachi Grill")
+
+
+
+class BundledPhotos(TestCase):
+    def test_a_photo_file_named_after_the_dish_replaces_the_illustration(self):
+        import os
+        from django.conf import settings
+        from .models import bundled_photo
+        r, table, curry, naan, users = make_restaurant("A")
+        path = os.path.join(settings.BASE_DIR, "core", "static", "core", "photos", "curry.png")
+        bundled_photo.cache_clear()
+        self.assertEqual(curry.picture, "")
+        with open(path, "wb") as f:
+            f.write(b"png")
+        self.addCleanup(os.remove, path)
+        self.addCleanup(bundled_photo.cache_clear)
+        bundled_photo.cache_clear()
+        self.assertEqual(Dish.objects.get(pk=curry.pk).picture, "/static/core/photos/curry.png")
+        dishes = {d["name"]: d for c in Client().get(f"/t/{table.code}/").context["menu"]["categories"] for d in c["dishes"]}
+        self.assertEqual(dishes["Curry"]["art"], "/static/core/photos/curry.png")
+        self.assertEqual(dishes["Naan"]["art"], "")
