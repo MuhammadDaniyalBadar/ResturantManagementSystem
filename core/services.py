@@ -300,7 +300,7 @@ def _editable(order):
 def cancel_order(order, by, guest=None):
     """Staff (by = their username) can cancel until served; a guest only their own order, before the kitchen has it.
     The order leaves the bill, so totals, the kitchen board and the floor map all drop it."""
-    order = Order.objects.select_for_update().select_related("bill").get(pk=order.pk)
+    order = Order.objects.select_for_update(of=("self",)).select_related("bill").get(pk=order.pk)
     if guest is not None and (order.guest_id != guest.id or order.status != Order.PLACED):
         raise OrderError("The kitchen already has this order. Ask your waiter to change it.")
     _editable(order)
@@ -317,7 +317,7 @@ def cancel_order(order, by, guest=None):
 @transaction.atomic
 def remove_item(item, by):
     """Staff remove one line from an order. Removing the last line cancels the order."""
-    order = Order.objects.select_for_update().select_related("bill").get(pk=item.order_id)
+    order = Order.objects.select_for_update(of=("self",)).select_related("bill").get(pk=item.order_id)
     _editable(order)
     if not item.deal_id:
         # a deal line needs as many of its main dish in the order

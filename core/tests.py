@@ -946,3 +946,18 @@ class RequestRace(TestCase):
         services.update_request(other, "ack", "waiter", users["waiter"])
         other.refresh_from_db()
         self.assertEqual(other.assigned, users["waiter"])
+
+
+
+class NextParty(TestCase):
+    def test_the_next_party_does_not_see_the_last_partys_names(self):
+        r, table, curry, naan, users = make_restaurant("A")
+        a = services.join_guest(table, "Aman")
+        order = services.place_order(table, [{"dish_id": naan.id, "quantity": 1}], a)
+        services.close_bill_by_staff(order.bill, "waiter")
+        services.join_guest(table, "Zara")
+        self.assertEqual(Client().get(f"/t/{table.code}/state/").json()["guests"], ["Zara"])
+        owner = Client()
+        owner.force_login(users["waiter"])
+        floor = next(t for t in owner.get("/staff/data/").json()["tables"] if t["n"] == 1)
+        self.assertEqual(floor["guests"], ["Zara"])

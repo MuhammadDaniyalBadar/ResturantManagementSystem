@@ -149,6 +149,13 @@ def get_table(code):
     return get_object_or_404(Table.objects.select_related("restaurant"), code=code)
 
 
+def party_guests(table, now):
+    """Names of the people at the table now: joined in the last 6 hours and after the table's last bill was closed."""
+    since = now - timedelta(hours=6)
+    last = Bill.objects.filter(table=table, status=Bill.PAID, paid_at__isnull=False).order_by("-paid_at").values_list("paid_at", flat=True).first()
+    return [g.name for g in Guest.objects.filter(table=table, created_at__gte=max(since, last) if last else since)]
+
+
 def session_guest(request, table):
     gid = request.session.get("guests", {}).get(table.code)
     return Guest.objects.filter(pk=gid, table=table).first() if gid else None
@@ -204,7 +211,7 @@ def table_state(request, code):
     out = {
         "sold_out": list(Dish.objects.filter(restaurant=r, available=False).values_list("id", flat=True)),
         "guest": {"id": guest.id, "name": guest.name} if guest else None,
-        "guests": [g.name for g in Guest.objects.filter(table=table, created_at__gte=now - timedelta(hours=6))],
+        "guests": party_guests(table, now),
         "orders": [order_json(o, now) for o in orders],
         "requests": [request_json(q, now) for q in requests],
         "wifi": {"name": r.wifi_name, "password": r.wifi_password} if r.wifi_name else None,
@@ -342,7 +349,7 @@ def floor_json(restaurant, now):
             info = {"id": bill.id, "status": bill.status, "total": money(s["base"]), "items": [f"{i['qty']} × {i['name']}" for i in s["items"]], "payments": [payment_json(p) | {"mine": False} for p in bill.payments.all()]}
         out.append({
             "n": t.number, "x": t.x, "y": t.y, "round": t.round, "status": services.table_status(t, bill, rq), "bill": info,
-            "guests": [g.name for g in Guest.objects.filter(table=t, created_at__gte=now - timedelta(hours=6))],
+            "guests": party_guests(t, now),
             "requests": [{"id": q.id, "label": q.get_kind_display(), "status": q.status, "assigned": (q.assigned.first_name or q.assigned.username) if q.assigned_id else "", "seconds_old": seconds_since(q.created_at, now)} for q in rq],
         })
     return out
