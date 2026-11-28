@@ -26,6 +26,7 @@
     {% endif %}{% endwith %}
     <span class="rail-live"><span class="livedot"></span>Live</span>
     {% block railextra %}{% endblock %}
+    <a href="{% url 'password_change' %}" class="muted sm" style="text-align: center">Change password</a>
     <form method="post" action="{% url 'logout' %}" style="margin: 0">{% csrf_token %}<button class="btn ghost sm">Log out</button></form>
   </div>
 </aside>
