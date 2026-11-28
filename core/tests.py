@@ -1041,3 +1041,25 @@ class GoesWellWith(TestCase):
         self.assertIn("Plain Naan", pairs("Beef Nihari"))
         self.assertEqual(pairs("Mint Raita"), [])
         self.assertNotIn("Dahi Bhallay", pairs("Malai Boti"))
+
+
+
+class DoubleTap(TestCase):
+    def test_the_same_cart_sent_twice_places_one_order(self):
+        r, table, curry, naan, users = make_restaurant("A")
+        c = Client()
+        c.post(f"/t/{table.code}/join/", json.dumps({"name": "Daniyal"}), content_type="application/json")
+        body = json.dumps({"key": "cart-123", "items": [{"dish_id": naan.id, "quantity": 2}]})
+        ids = {c.post(f"/t/{table.code}/order/", body, content_type="application/json").json()["order_id"] for _ in range(3)}
+        self.assertEqual(len(ids), 1)
+        self.assertEqual(Order.objects.filter(table=table).count(), 1)
+        # a new cart (new key) is a new order, and the same key at another table is unrelated
+        other = json.dumps({"key": "cart-456", "items": [{"dish_id": naan.id, "quantity": 1}]})
+        c.post(f"/t/{table.code}/order/", other, content_type="application/json")
+        t2 = Table.objects.create(restaurant=r, number=2)
+        c.post(f"/t/{t2.code}/order/", body, content_type="application/json")
+        self.assertEqual(Order.objects.count(), 3)
+        # orders sent without a key still work as before
+        services.place_order(table, [{"dish_id": naan.id, "quantity": 1}])
+        services.place_order(table, [{"dish_id": naan.id, "quantity": 1}])
+        self.assertEqual(Order.objects.count(), 5)

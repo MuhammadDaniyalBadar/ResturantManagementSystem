@@ -1,6 +1,8 @@
 // Urdu text for the guest app. Keys are the English text; {name}-style parts are filled in by t().
 // Dish names, descriptions and quiz questions come from the restaurant and stay as entered.
 const UR = {
+  'Placing order…': 'آرڈر بھیجا جا رہا ہے…',
+  'About {n} minutes once the kitchen starts': 'کچن میں تیاری شروع ہونے کے بعد تقریباً {n} منٹ',
   'Vegetarian': 'سبزی خور',
   'Vegan': 'ویگن',
   'Non-vegetarian': 'گوشت والا',

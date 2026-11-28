@@ -281,9 +281,11 @@ class Order(models.Model):
     cancelled_at = models.DateTimeField(null=True, blank=True)
     cancelled_by = models.CharField(max_length=60, blank=True, help_text="Who cancelled it: a staff username or 'guest'")
     stock_taken = models.BooleanField(default=False, editable=False)  # ingredients were deducted when it went to the kitchen
+    client_key = models.CharField(max_length=40, blank=True, default="", editable=False)  # one per cart, so a double tap places one order
 
     class Meta:
         ordering = ["created_at"]
+        constraints = [models.UniqueConstraint(fields=["table", "client_key"], condition=~models.Q(client_key=""), name="one_order_per_cart_key")]
 
     def __str__(self):
         return f"Order {self.pk} T{self.table.number} {self.status}"

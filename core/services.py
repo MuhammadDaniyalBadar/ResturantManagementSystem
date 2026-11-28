@@ -13,7 +13,7 @@ from django.contrib.auth.models import Permission
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, F, Q, Sum
 from django.utils import timezone
 
@@ -214,8 +214,23 @@ def add_review(bill, guest, stars, comment):
 
 # ---------- orders ----------
 
+def place_order(table, lines, guest=None, key=""):
+    """key is a code the phone makes once per cart: sending the same cart twice (double tap, retry) gives back the first order."""
+    key = str(key or "")[:40]
+    if key:
+        existing = Order.objects.filter(table=table, client_key=key).first()
+        if existing:
+            return existing
+    try:
+        return _place_order(table, lines, guest, key)
+    except IntegrityError:
+        if not key:
+            raise
+        return Order.objects.get(table=table, client_key=key)  # the other tap won the race
+
+
 @transaction.atomic
-def place_order(table, lines, guest=None):
+def _place_order(table, lines, guest, key):
     if not isinstance(lines, list) or not lines:
         raise OrderError("Your cart is empty.")
     if len(lines) > MAX_LINES:
@@ -225,7 +240,7 @@ def place_order(table, lines, guest=None):
     bill = get_bill(table)
     if bill.status != Bill.OPEN:
         raise OrderError("The bill is being paid. Ask your waiter to add more.")
-    order = Order.objects.create(restaurant=table.restaurant, table=table, bill=bill, guest=guest)
+    order = Order.objects.create(restaurant=table.restaurant, table=table, bill=bill, guest=guest, client_key=key)
     mains = {}
     for line in lines:
         if isinstance(line, dict) and not line.get("deal_id"):

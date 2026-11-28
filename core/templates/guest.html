@@ -210,14 +210,19 @@ function cartView() {
       h('div', { class: 'spread' }, h('span', { class: 'muted' }, t('Subtotal')), h('span', { class: 'd num', style: 'font-size:28px;font-weight:700' }, money(CUR, sub()))),
       h('p', { class: 'muted sm' }, t('The restaurant confirms your final price. Service charge and tax are added to your bill.')),
       S.cart.some((l) => isOut(l.id)) ? h('p', { class: 'sm', style: 'color:#ff8f87;font-weight:600' }, t('Remove the sold-out dishes to place your order.')) : null,
-      h('button', { class: 'btn wide', disabled: !S.cart.length || S.cart.some((l) => isOut(l.id)), onclick: place }, t('Place order'))));
+      h('button', { class: 'btn wide', disabled: S.placing || !S.cart.length || S.cart.some((l) => isOut(l.id)), onclick: place }, S.placing ? t('Placing order…') : t('Place order'))));
 }
+const newKey = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 async function place() {
   if (!S.guest) { S.askName = true; S.sheetIn = true; render(); return; }
-  await act(async () => {
-    await api(url('order/'), { items: S.cart.map((l) => ({ dish_id: l.id, size_id: l.size || null, quantity: l.qty, note: l.note, deal_id: l.deal ? l.deal.id : null })) });
-    S.cart = []; S.view = 'placed'; S.anim = true;
-  }, refreshState);
+  if (S.placing) return;  // extra taps while the order is on its way do nothing
+  S.placing = true; S.cartKey = S.cartKey || newKey(); render();
+  try {
+    await act(async () => {
+      await api(url('order/'), { key: S.cartKey, items: S.cart.map((l) => ({ dish_id: l.id, size_id: l.size || null, quantity: l.qty, note: l.note, deal_id: l.deal ? l.deal.id : null })) });
+      S.cart = []; S.cartKey = null; S.view = 'placed'; S.anim = true;
+    }, refreshState);
+  } finally { S.placing = false; }
   render();
 }
 function placedView() {
@@ -244,6 +249,7 @@ function orderCard(o, i) {
     h('div', { class: 'spread' }, h('span', { class: 'bb' }, t('Order #{n}', { n: o.id }), o.guest ? h('span', { class: 'muted sm', style: 'margin-inline-start:8px;font-weight:500' }, t('by {name}', { name: o.guest })) : null), h('span', { class: 'st ' + (o.status === 'placed' ? 'ordering' : 'eating') }, t(STATUS[o.status] || o.label))),
     h('div', { class: 'steps' }, STEPS.map((s, n) => h('div', { class: (n <= step ? 'on' : '') + (n === step && o.status !== 'served' ? ' now' : '') }, h('i'), t(STATUS[s])))),
     h('p', { class: 'muted' }, msg),
+    o.status === 'placed' && o.estimate ? h('div', { class: 'row', style: 'gap:8px' }, icon('clock', 16, 2), h('span', { class: 'b' }, t('About {n} minutes once the kitchen starts', { n: Math.ceil(o.estimate / 60) }))) : null,
     h('ul', { class: 'col', style: 'gap:10px' }, o.items.map((it) => h('li', { class: 'row', style: 'gap:12px' }, plate(it.art, it.name, 34, 'flat'), h('span', { class: 'grow' }, it.qty + ' × ' + it.name + (it.size ? ' (' + it.size + ')' : ''), it.deal ? h('span', { class: 'tag al', style: 'margin-inline-start:6px' }, t('Deal')) : null, it.note ? h('span', { class: 'muted sm', style: 'display:block' }, t('Note: {note}', { note: it.note })) : null)))),
     h('div', { class: 'spread', style: 'border-top:1.5px dashed var(--line);padding-top:10px' }, h('span', { class: 'muted' }, t('Total')), h('span', { class: 'd num bb', style: 'font-size:20px' }, money(CUR, o.total))),
     o.status === 'placed' && S.guest && o.guest_id === S.guest.id ? h('button', { class: 'btn red sm', style: 'align-self:flex-start',
@@ -365,12 +371,14 @@ function billView() {
   return h('div', { class: 'screen' + (S.anim ? ' scr' : '') }, backbar(t('Your bill'), 'status', h('span', { class: 'pill' }, '#' + b.id)),
     h('div', { class: 'scroll col', style: 'padding:6px 18px 14px;gap:12px' }, itemised, others, form),
     mine ? null : h('div', { class: 'col', style: 'padding:16px 18px 28px;background:var(--s1);border-top:1px solid var(--line);border-radius:18px 18px 0 0;box-shadow:0 -14px 34px rgba(0,0,0,.5);flex:none' },
-      h('button', { class: 'btn wide', onclick: payNow }, t('Pay {amount}', { amount: money(CUR, share + tipAmt) }))));
+      h('button', { class: 'btn wide', disabled: !!S.paying, onclick: payNow }, t('Pay {amount}', { amount: money(CUR, share + tipAmt) }))));
 }
 async function payNow() {
   const b = S.bill, locked = b.status === 'paying', split = locked ? b.split : (S.pay.split || Math.max(1, S.guests.length || 1));
   if (!S.guest) { S.askName = true; S.sheetIn = true; render(); return; }
-  await act(async () => { await api(url('pay/'), { method: S.pay.method, tip: S.pay.tip, split, email: S.pay.email }); toast(t('Your waiter is on the way')); }, refreshState);
+  if (S.paying) return;
+  S.paying = true;
+  try { await act(async () => { await api(url('pay/'), { method: S.pay.method, tip: S.pay.tip, split, email: S.pay.email }); toast(t('Your waiter is on the way')); }, refreshState); } finally { S.paying = false; }
 }
 function thanksView() {
   const p = S.paid || { amount: '0', method: '', email: '', reviewed: false };

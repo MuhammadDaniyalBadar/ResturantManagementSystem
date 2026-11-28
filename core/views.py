@@ -262,7 +262,8 @@ def table_member(request, code):
 @json_api
 def table_order(request, code):
     table = get_table(code)
-    order = services.place_order(table, read_json(request).get("items"), session_guest(request, table))
+    data = read_json(request)
+    order = services.place_order(table, data.get("items"), session_guest(request, table), data.get("key"))
     return JsonResponse({"ok": True, "order_id": order.id})
 
 

@@ -22,7 +22,7 @@ function svg(markup) {
   return t.content.firstChild;
 }
 const ICON = {
-  plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', minus: '<path d="M5 12h14"/>', back: '<path d="M15 6l-6 6 6 6"/>', check: '<path d="M5 13l4 4L19 7"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', x: '<path d="M6 6l12 12M18 6L6 18"/>', clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>', minus: '<path d="M5 12h14"/>', back: '<path d="M15 6l-6 6 6 6"/>', check: '<path d="M5 13l4 4L19 7"/>',
   bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"/>', drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>',
   napkin: '<path d="M4 6h16v12H4zM4 10h16M9 6v12"/>', receipt: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6"/>',
   cash: '<rect x="3" y="7" width="18" height="10" rx="2"/><circle cx="12" cy="12" r="2.5"/>', bank: '<path d="M3 10l9-6 9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18"/>',
