@@ -241,6 +241,17 @@ class LiveUpdates(TransactionTestCase):
         for c in (guest, staff, other_staff):
             await c.disconnect()
 
+    async def test_keepalive_messages_from_screens_are_ignored_and_pushes_still_arrive(self):
+        r, table, curry, naan, users = await sync_to_async(make_restaurant)("A")
+        guest = WebsocketCommunicator(URLRouter(websocket_urlpatterns), f"/ws/t/{table.code}/")
+        self.assertTrue((await guest.connect())[0])
+        for _ in range(3):
+            await guest.send_to(text_data='{"ping":1}')
+        self.assertTrue(await guest.receive_nothing())  # no reply, no disconnect
+        await sync_to_async(lambda: services.place_order(table, lines(curry, naan)))()
+        self.assertEqual(json.loads(await guest.receive_from()), {"changed": True})
+        await guest.disconnect()
+
 
 from decimal import Decimal  # noqa: E402
 

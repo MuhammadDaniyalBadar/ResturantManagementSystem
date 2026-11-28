@@ -64,10 +64,15 @@ function live(wsPath, refresh, pollMs = 8000) {
   };
   run();
   setInterval(run, pollMs);
+  let first = true;
   const open = () => {
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + wsPath);
     ws.onmessage = run;
-    ws.onclose = () => setTimeout(open, 3000);
+    // after a reconnect, catch up on anything pushed while the socket was down
+    ws.onopen = () => { if (!first) run(); first = false; };
+    ws.onclose = () => { clearInterval(beat); setTimeout(open, 1500); };
+    // hosting proxies cut sockets that sit silent; a tiny message every 15 s keeps this one open
+    const beat = setInterval(() => { if (ws.readyState === 1) ws.send('{"ping":1}'); }, 15000);
   };
   open();
 }
