@@ -456,7 +456,7 @@ def kitchen_page(request):
 def kitchen_data(request):
     now = timezone.now()
     # every station shows as a column, even with nothing cooking
-    stations = {s: [] for s in Dish.objects.filter(restaurant=request.profile.restaurant).values_list("station", flat=True).distinct()}
+    stations = {s: [] for s in Dish.objects.filter(restaurant=request.profile.restaurant, retired=False).values_list("station", flat=True).distinct()}
     for o in orders_qs(restaurant=request.profile.restaurant, status=Order.COOKING).order_by("cooking_at"):
         data = order_json(o, now)
         for station in sorted({i["station"] for i in data["items"]}):
