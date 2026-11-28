@@ -927,3 +927,22 @@ class HealthCheck(TestCase):
         with override_settings(ALLOWED_HOSTS=["example.com"], SECURE_SSL_REDIRECT=True):
             r = Client().get("/healthz/", HTTP_HOST="10.0.0.7:10000")
         self.assertEqual((r.status_code, r.content), (200, b"ok"))
+
+
+
+class RequestRace(TestCase):
+    def test_on_my_way_keeps_a_teammate_assigned_a_moment_earlier(self):
+        r, table, curry, naan, users = make_restaurant("A")
+        sara = User.objects.create_user("A-sara", password="pw")
+        StaffProfile.objects.create(user=sara, restaurant=r, role="waiter")
+        req = services.call_waiter(table, "water")
+        stale = ServiceRequest.objects.get(pk=req.pk)  # the "On my way" request read this before the assignment landed
+        services.assign_request(ServiceRequest.objects.get(pk=req.pk), sara, "waiter")
+        services.update_request(stale, "ack", "waiter", users["waiter"])
+        req.refresh_from_db()
+        self.assertEqual((req.status, req.assigned), (ServiceRequest.ACKNOWLEDGED, sara))
+        # with nobody assigned, the person who taps "On my way" takes it
+        other = services.call_waiter(table, "napkins")
+        services.update_request(other, "ack", "waiter", users["waiter"])
+        other.refresh_from_db()
+        self.assertEqual(other.assigned, users["waiter"])

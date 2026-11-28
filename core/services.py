@@ -371,9 +371,12 @@ def call_waiter(table, kind):
 
 
 @transaction.atomic
+@transaction.atomic
 def update_request(req, action, role, user=None):
     if role not in FRONT:
         raise PermissionDenied
+    # re-read under a lock: an assignment made a moment ago must not be overwritten by this stale copy
+    req = ServiceRequest.objects.select_for_update().get(pk=req.pk)
     now = timezone.now()
     if action == "ack" and req.status == ServiceRequest.OPEN:
         req.status, req.acknowledged_at = ServiceRequest.ACKNOWLEDGED, now
@@ -383,15 +386,17 @@ def update_request(req, action, role, user=None):
         req.acknowledged_at = req.acknowledged_at or now
     else:
         raise OrderError("That request cannot be changed this way.")
-    req.save()
+    req.save(update_fields=["status", "acknowledged_at", "done_at", "assigned"])
     notify(req.restaurant_id, req.table_id)
     return req
 
 
 @transaction.atomic
+@transaction.atomic
 def assign_request(req, user, role):
     if role not in FRONT:
         raise PermissionDenied
+    req = ServiceRequest.objects.select_for_update().get(pk=req.pk)
     req.assigned = user
     req.save(update_fields=["assigned"])
     notify(req.restaurant_id, req.table_id)
