@@ -961,3 +961,44 @@ class NextParty(TestCase):
         owner.force_login(users["waiter"])
         floor = next(t for t in owner.get("/staff/data/").json()["tables"] if t["n"] == 1)
         self.assertEqual(floor["guests"], ["Zara"])
+
+
+class BuiltInMenu(TestCase):
+    def test_loads_once_upgrades_old_data_and_keeps_past_orders(self):
+        from .menu import MENU, MENU_VERSION, apply_menu
+        from .models import Deal, OrderItem
+        r, table, curry, naan, users = make_restaurant("A")
+        r.name = "Demo Kitchen"
+        r.save()
+        lassi = Dish.objects.create(restaurant=r, category=curry.category, name="Mango Lassi", price=180, station="Drinks")
+        deal = Deal.objects.create(restaurant=r, dish=curry, partner=lassi, price=99)
+        old = services.place_order(table, [{"dish_id": curry.id, "size_id": curry.sizes.first().id, "quantity": 1},
+                                           {"dish_id": lassi.id, "deal_id": deal.id, "quantity": 1}])
+        self.assertTrue(apply_menu(r))
+        r.refresh_from_db()
+        self.assertEqual((r.name, r.menu_version), ("Saffron House", MENU_VERSION))
+        live = Dish.objects.filter(restaurant=r, available=True)
+        self.assertEqual(live.count(), sum(len(items) for _, items in MENU))
+        self.assertFalse(Dish.objects.get(pk=curry.pk).available)  # "Curry" is not on the new menu: hidden, not deleted
+        self.assertEqual(Dish.objects.get(pk=lassi.pk).price, 450)  # same name: updated in place
+        self.assertEqual(OrderItem.objects.filter(order=old).count(), 2)
+        self.assertEqual(OrderItem.objects.get(order=old, dish=lassi).deal_id, deal.id)  # old deal kept, just switched off
+        self.assertFalse(Deal.objects.get(pk=deal.pk).active)
+        makhani = Dish.objects.get(restaurant=r, name="Paneer Makhani")
+        self.assertEqual((makhani.diet, makhani.featured, [s.label for s in makhani.sizes.all()]), ("veg", True, ["Half", "Full"]))
+        # an owner's later edit survives a restart
+        makhani.price = 1500
+        makhani.save()
+        self.assertFalse(apply_menu(r))
+        self.assertEqual(Dish.objects.get(pk=makhani.pk).price, 1500)
+        # the guest menu carries the new details
+        dishes = {d["name"]: d for c in Client().get(f"/t/{table.code}/").context["menu"]["categories"] for d in c["dishes"]}
+        self.assertEqual((dishes["Chicken Karahi"]["badge"], dishes["Chicken Karahi"]["serves"], dishes["Dal Tadka"]["diet"]), ("Bestseller", 2, "vegan"))
+        self.assertNotIn("Curry", dishes)
+
+    def test_never_renames_a_real_restaurant(self):
+        from .menu import apply_menu
+        r = make_restaurant("Karachi Grill")[0]
+        apply_menu(r)
+        r.refresh_from_db()
+        self.assertEqual(r.name, "Karachi Grill")

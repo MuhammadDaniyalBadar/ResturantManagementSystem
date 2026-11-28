@@ -242,7 +242,7 @@ def place_order(table, lines, guest=None):
             raise OrderError("Invalid item.")
         if not 1 <= qty <= MAX_QTY:
             raise OrderError(f"Quantity must be between 1 and {MAX_QTY}.")
-        dish = Dish.objects.filter(pk=dish_id, restaurant=table.restaurant, available=True).first()
+        dish = Dish.objects.filter(pk=dish_id, restaurant=table.restaurant, available=True, retired=False).first()
         if dish is None:
             raise OrderError("A dish in your cart is no longer available.")
         price, label, deal = dish.price, "", None

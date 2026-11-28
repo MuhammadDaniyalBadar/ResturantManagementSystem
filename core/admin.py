@@ -64,7 +64,7 @@ class RecipeInline(ScopedChoices, admin.TabularInline):
 
 @admin.register(models.Dish)
 class DishAdmin(Scoped, admin.ModelAdmin):
-    list_display = ("name", "category", "price", "station", "prep_minutes", "art", "photo", "featured", "available")
+    list_display = ("name", "category", "price", "diet", "badge", "station", "prep_minutes", "photo", "featured", "available", "retired")
     list_filter = ("restaurant", "category", "station", "available")
     list_editable = ("available",)
     inlines = [SizeInline, RecipeInline]

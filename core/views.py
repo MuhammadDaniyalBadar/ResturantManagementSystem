@@ -184,9 +184,13 @@ def menu_data(restaurant):
                 "art": d.picture,
                 "featured": d.featured,
                 "available": d.available,
+                "diet": d.diet,
+                "serves": d.serves,
+                "badge": d.get_badge_display() if d.badge else "",
                 "deals": deals.get(d.id, []),
             }
             for d in category.dish_set.all()
+            if not d.retired
         ]
         if dishes:
             categories.append({"name": category.name, "dishes": dishes})
@@ -369,7 +373,7 @@ def staff_data(request):
     pay = Payment.objects.filter(bill__restaurant=restaurant, status=Payment.REQUESTED).select_related("guest", "bill__table")
     team = [{"id": u.id, "name": u.first_name or u.username} for u in User.objects.filter(profile__restaurant=restaurant, profile__role__in=[WAITER, OWNER])]
     menu = [{"id": d.id, "name": d.name, "category": d.category.name, "art": d.picture, "available": d.available}
-            for d in Dish.objects.filter(restaurant=restaurant).select_related("category")]
+            for d in Dish.objects.filter(restaurant=restaurant, retired=False).select_related("category")]
     return JsonResponse({"currency": restaurant.currency, "orders": orders, "menu": menu, "role": role, "requests": [request_json(r, now) for r in reqs], "tables": floor_json(restaurant, now), "payments": [payment_json(p) for p in pay], "team": team, "me": request.user.id})
 
 

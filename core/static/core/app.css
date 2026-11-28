@@ -200,3 +200,10 @@ label.f { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font
 [dir=rtl] .pick .pslot { right: auto; left: -2px; }
 [dir=rtl] .back svg, [dir=rtl] .iconbtn:has(path[d^="M15 6"]) svg { transform: scaleX(-1); }
 .gcard .gmain { text-align: start; }
+
+/* dish details: veg / non-veg mark and badges */
+.diet { display: inline-block; width: 13px; height: 13px; border: 1.5px solid; border-radius: 3px; position: relative; vertical-align: -1px; margin-inline-end: 6px; flex: none; }
+.diet::after { content: ""; position: absolute; inset: 2.5px; border-radius: 50%; background: currentColor; }
+.diet.v { color: #1f9d55; } .diet.nv { color: #c0392b; }
+.gcard .gbadge { position: absolute; top: 8px; inset-inline-start: 10px; font-size: 10.5px; font-weight: 700; padding: 3px 8px; border-radius: 6px; background: var(--acc); color: var(--on-acc, #fff); z-index: 1; }
+.sheetx { position: sticky; top: 0; align-self: flex-end; margin: -14px -6px -26px 0; width: 36px; height: 36px; border-radius: 50%; background: var(--s3); color: var(--fg); display: grid; place-items: center; z-index: 2; flex: none; }

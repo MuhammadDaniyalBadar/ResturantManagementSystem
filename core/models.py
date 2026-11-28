@@ -41,6 +41,7 @@ class Restaurant(models.Model):
     trial_ends = models.DateField(null=True, blank=True)
     paid_until = models.DateField(null=True, blank=True)
     suspended = models.BooleanField(default=False, help_text="Set by the platform; guests cannot order and staff see a notice")
+    menu_version = models.CharField(max_length=40, blank=True, editable=False)  # last built-in menu loaded, so it loads only once
     created_at = models.DateTimeField(auto_now_add=True, null=True)
     currency = models.CharField(max_length=8, default="Rs")
     service_percent = models.DecimalField(max_digits=5, decimal_places=2, default=5, help_text="Service charge added to every bill")
@@ -163,6 +164,12 @@ class Dish(models.Model):
     available = models.BooleanField(default=True)
     art = models.CharField(max_length=12, blank=True, choices=ART, help_text="Illustration shown on the menu")
     featured = models.BooleanField(default=False, help_text="Shown as the Chef's pick on the menu")
+    DIETS = [("", "-"), ("veg", "Vegetarian"), ("nonveg", "Non-vegetarian"), ("vegan", "Vegan")]
+    BADGES = [("", "-"), ("bestseller", "Bestseller"), ("new", "New"), ("chef", "Chef's special"), ("seasonal", "Seasonal")]
+    diet = models.CharField(max_length=6, choices=DIETS, blank=True, help_text="Shown as a green (veg) or red (non-veg) mark")
+    serves = models.PositiveSmallIntegerField(null=True, blank=True, help_text="How many people one portion (or the smallest size) serves")
+    badge = models.CharField(max_length=10, choices=BADGES, blank=True)
+    retired = models.BooleanField(default=False, help_text="Taken off the menu for good. Kept so past orders still show it.")
     auto_out = models.BooleanField(default=False, editable=False)  # sold out by inventory, comes back on restock
 
     class Meta:
