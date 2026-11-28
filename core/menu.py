@@ -62,7 +62,7 @@ MENU = [
     ]),
     ("Karahi & Handi", [
         d("Chicken Karahi", "Bone-in chicken cooked in a blazing wok with tomato, green chilli, ginger and butter. Our signature.", 1790,
-          sizes=(("Half", 1790), ("Full", 3390)), spice="hot", allergens="Dairy", station=KARAHI, prep=22, art="makhani", serves=2, badge="bestseller"),
+          sizes=(("Half", 1790), ("Full", 3390)), spice="hot", allergens="Dairy", station=KARAHI, prep=22, art="makhani", serves=2, badge="bestseller", featured=True),
         d("Mutton Karahi", "Tender mutton on the bone, tomato and black pepper, finished with fresh ginger.", 2990,
           sizes=(("Half", 2990), ("Full", 5690)), spice="hot", allergens="Dairy", station=KARAHI, prep=30, art="makhani", serves=2),
         d("Chicken White Handi", "Boneless chicken in a rich cream, yoghurt and white-pepper gravy, cooked in a clay pot.", 1890,
@@ -70,7 +70,7 @@ MENU = [
         d("Butter Chicken", "Tandoori chicken simmered in a smooth tomato, butter and fenugreek sauce.", 1690,
           sizes=(("Half", 1690), ("Full", 3150)), spice="mild", allergens="Dairy, Nuts", station=KARAHI, prep=18, art="makhani", serves=2),
         d("Paneer Makhani", "Soft paneer in a slow-cooked tomato and butter gravy with a touch of cream.", 1390,
-          sizes=(("Half", 1390), ("Full", 2490)), spice="medium", allergens="Dairy, Nuts", station=KARAHI, prep=18, art="makhani", diet="veg", serves=2, featured=True),
+          sizes=(("Half", 1390), ("Full", 2490)), spice="medium", allergens="Dairy, Nuts", station=KARAHI, prep=18, art="makhani", diet="veg", serves=2),
         d("Palak Paneer", "Paneer in a garlicky spinach gravy, finished with butter.", 1290,
           sizes=(("Half", 1290), ("Full", 2350)), spice="mild", allergens="Dairy", station=KARAHI, prep=16, art="dal", diet="veg", serves=2),
         d("Dal Makhani", "Black lentils slow-cooked overnight with butter and cream.", 990,

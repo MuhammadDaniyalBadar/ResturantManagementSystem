@@ -985,7 +985,8 @@ class BuiltInMenu(TestCase):
         self.assertEqual(OrderItem.objects.get(order=old, dish=lassi).deal_id, deal.id)  # old deal kept, just switched off
         self.assertFalse(Deal.objects.get(pk=deal.pk).active)
         makhani = Dish.objects.get(restaurant=r, name="Paneer Makhani")
-        self.assertEqual((makhani.diet, makhani.featured, [s.label for s in makhani.sizes.all()]), ("veg", True, ["Half", "Full"]))
+        self.assertEqual((makhani.diet, makhani.featured, [s.label for s in makhani.sizes.all()]), ("veg", False, ["Half", "Full"]))
+        self.assertTrue(Dish.objects.get(restaurant=r, name="Chicken Karahi").featured)  # the Chef's pick has a real photo
         # an owner's later edit survives a restart
         makhani.price = 1500
         makhani.save()
