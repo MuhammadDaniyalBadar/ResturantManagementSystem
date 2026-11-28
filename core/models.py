@@ -178,6 +178,8 @@ class Dish(models.Model):
     serves = models.PositiveSmallIntegerField(null=True, blank=True, help_text="How many people one portion (or the smallest size) serves")
     badge = models.CharField(max_length=10, choices=BADGES, blank=True)
     retired = models.BooleanField(default=False, help_text="Taken off the menu for good. Kept so past orders still show it.")
+    pairs = models.ManyToManyField("self", symmetrical=False, blank=True, related_name="+",
+                                   help_text="Suggested under 'Goes well with' on this dish, e.g. naan with a karahi")
     auto_out = models.BooleanField(default=False, editable=False)  # sold out by inventory, comes back on restock
 
     class Meta:

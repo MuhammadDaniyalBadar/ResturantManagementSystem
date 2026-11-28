@@ -138,6 +138,39 @@ DEALS = [
 ]
 
 
+# "Goes well with": what a waiter would suggest with each section, or with one dish (dish names win over sections)
+PAIRINGS = {
+    "Soups": ["Chicken Pakora", "Vegetable Samosa"],
+    "Starters": ["Mint Margarita", "Fresh Lime Soda"],
+    "BBQ & Grill": ["Garlic Naan", "Mint Raita", "Kachumber Salad"],
+    "Karahi & Handi": ["Butter Naan", "Garlic Naan", "Mint Raita"],
+    "Lahori Classics": ["Plain Naan", "Roghni Naan", "Kachumber Salad"],
+    "Rice": ["Mint Raita", "Kachumber Salad", "Mint Margarita"],
+    "Breads": ["Chicken Karahi", "Dal Makhani", "Butter Chicken"],
+    "Sides": [],
+    "Desserts": ["Doodh Patti", "Kashmiri Chai"],
+    "Drinks": [],
+    "Mixed Grill Platter": ["Mint Raita", "Kachumber Salad", "Garlic Naan"],
+    "Dal Makhani": ["Butter Naan", "Steamed Rice", "Mint Raita"],
+    "Dal Tadka": ["Steamed Rice", "Tandoori Roti", "Kachumber Salad"],
+    "Masala Chai": ["Vegetable Samosa", "Gulab Jamun"],
+    "Doodh Patti": ["Vegetable Samosa", "Gulab Jamun"],
+    "Kashmiri Chai": ["Gulab Jamun", "Kheer"],
+}
+
+
+def apply_pairings(restaurant, dish_model=None):
+    """Set each built-in dish's "Goes well with" list. Takes the model too so a data migration can call it."""
+    Model = dish_model or Dish
+    by_name = {x.name: x for x in Model.objects.filter(restaurant=restaurant)}
+    for cat_name, items in MENU:
+        for item in items:
+            dish = by_name.get(item["name"])
+            names = PAIRINGS.get(item["name"], PAIRINGS.get(cat_name, []))
+            if dish:
+                dish.pairs.set([by_name[n] for n in names if n in by_name and n != dish.name])
+
+
 @transaction.atomic
 def apply_menu(restaurant, force=False):
     """Load the built-in menu into this restaurant once per MENU_VERSION. Returns True if it loaded."""
@@ -170,6 +203,7 @@ def apply_menu(restaurant, force=False):
     Deal.objects.filter(restaurant=restaurant).update(active=False)  # old deals stay for past orders, off the menu
     for main, partner, price in DEALS:
         Deal.objects.update_or_create(restaurant=restaurant, dish=by_name[main], partner=by_name[partner], defaults={"price": price, "active": True})
+    apply_pairings(restaurant)
     restaurant.menu_version = MENU_VERSION
     restaurant.save()
     return True

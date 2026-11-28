@@ -19,6 +19,12 @@ class ScopedChoices:
             kwargs["queryset"] = model.objects.filter(restaurant=r)
         return super().formfield_for_foreignkey(db_field, request, **kwargs)
 
+    def formfield_for_manytomany(self, db_field, request, **kwargs):
+        r = _own_restaurant(request)
+        if r is not None and hasattr(db_field.related_model, "restaurant"):
+            kwargs["queryset"] = db_field.related_model.objects.filter(restaurant=r)
+        return super().formfield_for_manytomany(db_field, request, **kwargs)
+
 
 class Scoped(ScopedChoices):
     """Owners see and edit only their own restaurant's rows; a superuser sees everything.
@@ -68,6 +74,7 @@ class DishAdmin(Scoped, admin.ModelAdmin):
     list_filter = ("restaurant", "category", "station", "available")
     list_editable = ("available",)
     inlines = [SizeInline, RecipeInline]
+    filter_horizontal = ("pairs",)
 
 
 @admin.register(models.Table)

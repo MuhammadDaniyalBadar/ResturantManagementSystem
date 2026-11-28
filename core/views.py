@@ -171,7 +171,7 @@ def menu_data(restaurant):
     for d in Deal.objects.filter(restaurant=restaurant, active=True).select_related("partner"):
         deals.setdefault(d.dish_id, []).append({"id": d.id, "partner_id": d.partner_id, "partner": d.partner.name, "art": d.partner.picture, "price": str(d.price), "normal": str(d.partner.price)})
     categories = []
-    for category in Category.objects.filter(restaurant=restaurant).prefetch_related("dish_set__sizes"):
+    for category in Category.objects.filter(restaurant=restaurant).prefetch_related("dish_set__sizes", "dish_set__pairs"):
         dishes = [
             {
                 "id": d.id,
@@ -187,6 +187,7 @@ def menu_data(restaurant):
                 "diet": d.diet,
                 "serves": d.serves,
                 "badge": d.get_badge_display() if d.badge else "",
+                "pairs": [p.id for p in d.pairs.all() if not p.retired],
                 "deals": deals.get(d.id, []),
             }
             for d in category.dish_set.all()

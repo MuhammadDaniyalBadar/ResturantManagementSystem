@@ -135,7 +135,8 @@ function shell(inner) {
 function sheet() {
   if (!S.sheet) return null;
   const { d } = S.sheet, z = d.sizes.find((s) => String(s.id) === String(S.sheet.size)), price = z ? +z.price : +d.price;
-  const pairs = DISHES.filter((x) => x.id !== d.id && !isOut(x.id) && x.cat !== d.cat && !x.sizes.length && !d.deals.some((e) => e.partner_id === x.id)).slice(0, 2);
+  // the restaurant's own suggestions for this dish; deal partners are already offered above
+  const pairs = (d.pairs || []).map((id) => byId[id]).filter((x) => x && !isOut(x.id) && !d.deals.some((e) => e.partner_id === x.id)).slice(0, 3);
   return shell([
     h('div', { style: 'position:relative;display:flex;justify-content:center;padding:8px 0 2px' },
       h('div', { style: 'position:absolute;top:14px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(76,141,255,.25),transparent 68%)' }),

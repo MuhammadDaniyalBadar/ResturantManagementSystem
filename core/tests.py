@@ -1024,3 +1024,20 @@ class BundledPhotos(TestCase):
         dishes = {d["name"]: d for c in Client().get(f"/t/{table.code}/").context["menu"]["categories"] for d in c["dishes"]}
         self.assertEqual(dishes["Curry"]["art"], "/static/core/photos/curry.png")
         self.assertEqual(dishes["Naan"]["art"], "")
+
+
+
+class GoesWellWith(TestCase):
+    def test_karahi_suggests_bread_and_grill_suggests_naan_raita_salad(self):
+        from .menu import apply_menu
+        r, table, curry, naan, users = make_restaurant("A")
+        apply_menu(r)
+        menu = Client().get(f"/t/{table.code}/").context["menu"]
+        dishes = {d["name"]: d for c in menu["categories"] for d in c["dishes"]}
+        name = {d["id"]: n for n, d in dishes.items()}
+        pairs = lambda n: [name[i] for i in dishes[n]["pairs"]]
+        self.assertEqual(sorted(pairs("Chicken White Handi")), ["Butter Naan", "Garlic Naan", "Mint Raita"])
+        self.assertEqual(sorted(pairs("Malai Boti")), ["Garlic Naan", "Kachumber Salad", "Mint Raita"])
+        self.assertIn("Plain Naan", pairs("Beef Nihari"))
+        self.assertEqual(pairs("Mint Raita"), [])
+        self.assertNotIn("Dahi Bhallay", pairs("Malai Boti"))
